@@ -1,0 +1,247 @@
+#version 430 core
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Schwarzschild null-geodesic ray tracer (Compute Shader)
+//
+// Each thread traces one pixel's light ray backwards through curved spacetime
+// using 4th-order Runge-Kutta integration of the geodesic equation in the
+// Hamiltonian formulation:
+//
+//   dx^μ/dλ =  g^{μν} p_ν
+//   dp_μ/dλ = -½ ∂g^{αβ}/∂x^μ · p_α p_β
+//
+// Termination conditions:
+//   CAPTURED   r ≤ rs          → black
+//   ESCAPED    r > abort_dist  → sky colour (based on direction)
+//   MAX_STEPS  budget exhausted → debug magenta
+// ═══════════════════════════════════════════════════════════════════════════════
+
+layout (local_size_x = 16, local_size_y = 16) in;
+
+layout (rgba32f, binding = 0) uniform writeonly image2D outputImage;
+
+// Uniforms set from C++
+uniform float u_mass;
+uniform float u_rs;
+uniform float u_cam_distance;
+uniform float u_cam_inclination;  // degrees
+uniform float u_cam_fov;          // degrees
+uniform int   u_max_steps;
+uniform float u_step_size;
+uniform float u_abort_distance;
+uniform ivec2 u_resolution;
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const float PI = 3.14159265358979323846;
+
+// ── Geodesic RHS ──────────────────────────────────────────────────────────────
+// State: vec4 pos = (t, r, θ, φ),  vec4 mom = (p_t, p_r, p_θ, p_φ)
+// Returns: dpos/dλ in out_dx,  dmom/dλ in out_dp
+
+void geodesicRHS(vec4 pos, vec4 mom, float rs,
+                 out vec4 out_dx, out vec4 out_dp)
+{
+    float r     = pos.y;
+    float theta = pos.z;
+
+    float pt  = mom.x;
+    float pr  = mom.y;
+    float pth = mom.z;
+    float pph = mom.w;
+
+    float f    = 1.0 - rs / r;
+    float r2   = r * r;
+    float r3   = r2 * r;
+    float sth  = sin(theta);
+    float cth  = cos(theta);
+
+    // Prevent division by zero: guard f and sin²θ for float precision
+    float f_safe  = (abs(f) < 1e-7) ? sign(f) * 1e-7 : f;
+    float f2      = f_safe * f_safe;
+    float s2      = max(sth * sth, 1e-8);
+    float s3      = s2 * max(abs(sth), 1e-4);
+
+    // dx^μ/dλ
+    out_dx.x = -pt  / f_safe;        // dt/dλ
+    out_dx.y =  f   * pr;            // dr/dλ  (use exact f here, not f_safe)
+    out_dx.z =  pth / r2;            // dθ/dλ
+    out_dx.w =  pph / (r2 * s2);     // dφ/dλ
+
+    // dp_μ/dλ
+    out_dp.x = 0.0;                                          // energy conserved
+    out_dp.y = -0.5 * (
+        +rs / (r2 * f2) * pt  * pt
+        + rs /  r2       * pr  * pr
+        - 2.0 /  r3      * pth * pth
+        - 2.0 / (r3*s2)  * pph * pph
+    );
+    out_dp.z = cth / (r2 * s3) * pph * pph;                 // dp_θ/dλ
+    out_dp.w = 0.0;                                          // angular momentum conserved
+}
+
+// ── RK4 step ──────────────────────────────────────────────────────────────────
+
+void rk4Step(inout vec4 pos, inout vec4 mom, float rs, float h) {
+    vec4 dx1, dp1, dx2, dp2, dx3, dp3, dx4, dp4;
+
+    geodesicRHS(pos, mom, rs, dx1, dp1);
+    geodesicRHS(pos + 0.5*h*dx1, mom + 0.5*h*dp1, rs, dx2, dp2);
+    geodesicRHS(pos + 0.5*h*dx2, mom + 0.5*h*dp2, rs, dx3, dp3);
+    geodesicRHS(pos + h*dx3,     mom + h*dp3,     rs, dx4, dp4);
+
+    pos += (h / 6.0) * (dx1 + 2.0*dx2 + 2.0*dx3 + dx4);
+    mom += (h / 6.0) * (dp1 + 2.0*dp2 + 2.0*dp3 + dp4);
+}
+
+// ── Ray initialisation ────────────────────────────────────────────────────────
+//
+// Camera model using the LOCAL ORTHONORMAL FRAME of a static observer.
+//
+// At the observer position (r_obs, θ_obs, φ=0), the orthonormal tetrad is:
+//   ê_(t) = (1/√f) ∂_t
+//   ê_(r) = √f     ∂_r
+//   ê_(θ) = (1/r)  ∂_θ
+//   ê_(φ) = (1/(r sinθ)) ∂_φ
+//
+// The camera looks radially inward (−ê_(r) direction).
+// Screen axes: x → ê_(φ),  y → −ê_(θ)  (θ increases "downward").
+//
+// For each pixel, compute a local 3-direction n = (n_r, n_θ, n_φ) with |n|=1:
+//   n_r  = −cos(β)·cos(α)    (inward)
+//   n_θ  =  sin(β)           (up = −θ direction, but sign handled by β)
+//   n_φ  =  cos(β)·sin(α)    (right)
+//
+// where α = horizontal angle, β = vertical angle from FOV mapping.
+//
+// Convert to covariant momenta:
+//   p_t = −1                       (conserved energy, E = 1)
+//   E_loc = √f · |p_t| = √f       (local energy seen by static observer)
+//
+//   p_r = n_r                      (= √g_rr · E_loc · n_r / √g_rr = n_r)
+//   p_θ = r · √f · n_θ            (= √g_θθ · E_loc · n_θ)
+//   p_φ = r · sinθ · √f · n_φ     (= √g_φφ · E_loc · n_φ)
+//
+// Null condition g^μν p_μ p_ν = 0 is automatically satisfied by construction
+// (|n|=1 ensures this).
+
+void initRay(ivec2 pixel, ivec2 res, out vec4 pos, out vec4 mom) {
+    float r_obs     = u_cam_distance;
+    float theta_obs = u_cam_inclination * PI / 180.0;
+    float fov_rad   = u_cam_fov * PI / 180.0;
+    float f_obs     = 1.0 - u_rs / r_obs;
+    float sqrtF     = sqrt(max(f_obs, 1e-8));
+
+    // Screen coordinates → deflection angles
+    float aspect = float(res.x) / float(res.y);
+    float halfTan = tan(fov_rad * 0.5);
+
+    // NDC in [-1, 1]
+    float ndcX = 2.0 * (float(pixel.x) + 0.5) / float(res.x) - 1.0;
+    float ndcY = 2.0 * (float(pixel.y) + 0.5) / float(res.y) - 1.0;
+
+    // Angular deflection from boresight (radial inward direction)
+    float alpha = ndcX * halfTan * aspect;   // horizontal
+    float beta  = ndcY * halfTan;            // vertical
+
+    // Local orthonormal 3-direction (unit vector, |n|=1)
+    float n_r  = -cos(beta) * cos(alpha);    // inward (toward BH)
+    float n_th =  sin(beta);                 // up on screen
+    float n_ph =  cos(beta) * sin(alpha);    // right on screen
+
+    // Observer position
+    pos = vec4(0.0, r_obs, theta_obs, 0.0);
+
+    // Covariant momenta from orthonormal frame
+    float sinThObs = sin(theta_obs);
+    float pt  = -1.0;                                // conserved energy
+    float pr  = n_r;                                 // p_r
+    float pth = r_obs * sqrtF * n_th;                // p_θ
+    float pph = r_obs * sinThObs * sqrtF * n_ph;     // p_φ
+
+    mom = vec4(pt, pr, pth, pph);
+}
+
+// ── Sky colour ────────────────────────────────────────────────────────────────
+// Simple checker-board / gradient on the celestial sphere for visual debugging.
+
+vec3 skyColor(vec4 pos) {
+    float theta = pos.z;
+    float phi   = pos.w;
+
+    // Latitude-longitude grid
+    float gridTh  = step(0.02, abs(sin(theta * 10.0)));
+    float gridPhi = step(0.02, abs(sin(phi   * 10.0)));
+    float grid    = min(gridTh, gridPhi);
+
+    // Base gradient: warm at equator, cool at poles
+    vec3 base = mix(vec3(0.05, 0.05, 0.15),   // pole colour
+                    vec3(0.12, 0.08, 0.03),    // equator colour
+                    sin(theta));
+
+    return base * (0.5 + 0.5 * grid);
+}
+
+// ── Adaptive step size ────────────────────────────────────────────────────────
+// Scale the step down near the horizon to avoid numerical instability from
+// the Boyer-Lindquist coordinate singularity at r = rs.
+
+float adaptiveStep(float r, float rs, float h_base) {
+    float dr = r - rs;
+    const float k = 2.0;             // start shrinking at r ≈ 3·rs
+    const float h_min_ratio = 0.01;  // floor at 1% of base step (float needs larger floor)
+    float scale = dr / (k * rs);
+    scale = max(scale, h_min_ratio);
+    scale = min(scale, 1.0);
+    return h_base * scale;
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+
+    // Out-of-bounds guard
+    if (pixel.x >= u_resolution.x || pixel.y >= u_resolution.y) return;
+
+    vec4 pos, mom;
+    initRay(pixel, u_resolution, pos, mom);
+
+    vec3 color = vec3(0.0);
+    int status = 0;  // 0 = active, 1 = captured, 2 = escaped
+
+    for (int i = 0; i < u_max_steps; ++i) {
+        float h_eff = adaptiveStep(pos.y, u_rs, u_step_size);
+        rk4Step(pos, mom, u_rs, h_eff);
+
+        // Clamp theta to avoid coordinate singularity at poles
+        pos.z = clamp(pos.z, 0.001, PI - 0.001);
+
+        float r = pos.y;
+
+        // Termination: captured by black hole
+        // Use a generous buffer above rs — float precision cannot resolve
+        // the Boyer-Lindquist coordinate singularity at r = rs.
+        if (r <= u_rs * 1.05) {
+            status = 1;
+            break;
+        }
+
+        // Termination: escaped to infinity
+        if (r > u_abort_distance) {
+            status = 2;
+            break;
+        }
+    }
+
+    // Colour based on termination
+    if (status == 1) {
+        color = vec3(0.0);               // Black — inside event horizon
+    } else if (status == 2) {
+        color = skyColor(pos);           // Sky / background
+    } else {
+        color = vec3(1.0, 0.0, 1.0);    // Magenta — max steps (debug)
+    }
+
+    imageStore(outputImage, pixel, vec4(color, 1.0));
+}
