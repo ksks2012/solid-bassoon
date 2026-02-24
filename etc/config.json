@@ -1,0 +1,28 @@
+{
+    "blackhole": {
+        "mass": 1.0,
+        "spin": 0.0,
+        "rs": 2.0
+    },
+    "camera": {
+        "distance": 30.0,
+        "inclination": 80.0,
+        "azimuth": 0.0,
+        "fov": 60.0
+    },
+    "accretion_disk": {
+        "inner_radius": 3.0,
+        "outer_radius": 12.0,
+        "temperature": 1.0
+    },
+    "rendering": {
+        "width": 1280,
+        "height": 720,
+        "max_steps": 1000,
+        "step_size": 0.05,
+        "abort_distance": 100.0
+    },
+    "logger": {
+        "level": 1
+    }
+}
