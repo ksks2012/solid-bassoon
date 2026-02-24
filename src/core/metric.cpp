@@ -67,8 +67,13 @@ SchwarzschildMetric::geodesicRHS(const State& s) const {
 
     // dp_r/dλ = -½ [ ∂g^tt/∂r · pt²  +  ∂g^rr/∂r · pr²
     //               + ∂g^θθ/∂r · pth² +  ∂g^φφ/∂r · pph² ]
+    //
+    // ∂g^tt/∂r = +rs/(r²f²)      (g^tt = -1/f)
+    // ∂g^rr/∂r = +rs/r²          (g^rr = f)
+    // ∂g^θθ/∂r = -2/r³           (g^θθ = 1/r²)
+    // ∂g^φφ/∂r = -2/(r³sin²θ)    (g^φφ = 1/(r²sin²θ))
     d.dp[1] = -0.5 * (
-        - rs_ / (r2 * f2) * pt  * pt
+        + rs_ / (r2 * f2) * pt  * pt
         + rs_ /  r2        * pr  * pr
         - 2.0 /  r3        * pth * pth
         - 2.0 / (r3 * sin2) * pph * pph

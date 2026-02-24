@@ -64,8 +64,15 @@ public:
     Derivatives geodesicRHS(const State& s) const;
 
     // ── Ray termination helpers ───────────────────────────────────────────────
-    bool insideHorizon(double r)                    const { return r <= rs_; }
-    bool escaped      (double r, double abort_dist) const { return r > abort_dist; }
+    // Use a small buffer (1 + ε) above rs because Boyer-Lindquist coordinates
+    // have a coordinate singularity at r = rs — the integrator can never
+    // numerically reach r = rs exactly.
+    static constexpr double HORIZON_EPSILON = 0.01;
+
+    bool insideHorizon(double r) const {
+        return r <= rs_ * (1.0 + HORIZON_EPSILON);
+    }
+    bool escaped(double r, double abort_dist) const { return r > abort_dist; }
 
     // ── Null-ray initialisation (implemented in metric.cpp) ───────────────────
     // Solve g^{μν} p_μ p_ν = 0 for p_r given (p_t, p_θ, p_φ).
