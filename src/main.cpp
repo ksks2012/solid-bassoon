@@ -3,6 +3,8 @@
 #include "logging/logger.h"
 #include "logging/spdlog_logger.h"
 #include "core/metric.h"
+#include "core/geodesic_integrator.h"
+#include "rendering/ray_tracer.h"
 
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
@@ -10,6 +12,76 @@
 
 #include <iostream>
 #include <cmath>
+#include <string>
+
+// ── CPU validation helper ─────────────────────────────────────────────────────
+// Trace a few test rays on the CPU at startup to verify the integrator.
+
+static void cpuValidation(const SchwarzschildMetric& metric, const Config& config) {
+    // Use a larger step budget for validation — adaptive stepping near the
+    // horizon shrinks the step size significantly, so we need many more
+    // iterations to let the ray reach the horizon buffer.
+    const int    validationMaxSteps = 20000;
+    const double validationStepSize = 0.1;
+
+    GeodesicIntegrator integrator(metric,
+                                  validationStepSize,
+                                  validationMaxSteps,
+                                  config.render.abort_distance);
+
+    const double r_obs     = config.camera.distance;
+    const double theta_obs = config.camera.inclination * M_PI / 180.0;
+    const double rs        = metric.schwarzschildRadius();
+    const double f_obs     = 1.0 - rs / r_obs;
+    const double sqrtF     = std::sqrt(f_obs);
+
+    auto statusStr = [](RayStatus s) -> const char* {
+        switch (s) {
+            case RayStatus::CAPTURED:  return "CAPTURED";
+            case RayStatus::ESCAPED:   return "ESCAPED";
+            case RayStatus::MAX_STEPS: return "MAX_STEPS";
+            default:                   return "ACTIVE";
+        }
+    };
+
+    // Test rays using the local orthonormal frame model (same as GPU).
+    // Each ray is defined by (alpha, beta) deflection angles from boresight.
+    //   n_r  = -cos(beta)*cos(alpha)
+    //   n_th =  sin(beta)
+    //   n_ph =  cos(beta)*sin(alpha)
+    //   p_t  = -1,  p_r = n_r,  p_th = r*sqrt(f)*n_th,  p_ph = r*sin(th)*sqrt(f)*n_ph
+    struct TestRay { const char* name; double alpha_deg; double beta_deg; };
+    TestRay tests[] = {
+        { "radial ingoing",       0.0,  0.0 },   // straight toward BH → CAPTURED
+        { "slight offset (2°)",   2.0,  0.0 },   // small deflection   → CAPTURED
+        { "large offset (20°)",  20.0,  0.0 },   // should escape      → ESCAPED
+    };
+
+    for (auto& t : tests) {
+        double alpha = t.alpha_deg * M_PI / 180.0;
+        double beta  = t.beta_deg  * M_PI / 180.0;
+
+        double n_r  = -std::cos(beta) * std::cos(alpha);
+        double n_th =  std::sin(beta);
+        double n_ph =  std::cos(beta) * std::sin(alpha);
+
+        double pt  = -1.0;
+        double pr  = n_r;
+        double pth = r_obs * sqrtF * n_th;
+        double pph = r_obs * std::sin(theta_obs) * sqrtF * n_ph;
+
+        SchwarzschildMetric::State s0;
+        s0.x = {0.0, r_obs, theta_obs, 0.0};
+        s0.p = {pt, pr, pth, pph};
+
+        TraceResult result = integrator.trace(s0);
+
+        LOG_INFO("CPUTest", std::string(t.name) +
+                 ": status=" + statusStr(result.status) +
+                 "  steps=" + std::to_string(result.steps) +
+                 "  r_final=" + std::to_string(result.finalState.x[1]));
+    }
+}
 
 int main(int argc, char* argv[]) {
     // ── Logger setup ──────────────────────────────────────────────────────────
@@ -49,7 +121,39 @@ int main(int argc, char* argv[]) {
     LOG_INFO("Main", "Photon sphere r = " + std::to_string(metric.photonSphere()));
     LOG_INFO("Main", "ISCO radius r = " + std::to_string(metric.iscoRadius()));
 
+    // Detect software renderer
+    const char* glRendererCStr = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+    std::string glRendererStr = glRendererCStr ? glRendererCStr : "unknown";
+    bool isSoftwareRenderer = (glRendererStr.find("llvmpipe") != std::string::npos ||
+                               glRendererStr.find("swrast")   != std::string::npos);
+    if (isSoftwareRenderer) {
+        LOG_WARN("Main", "Software renderer detected (" + glRendererStr +
+                 ") — expect very low FPS for compute shader dispatch");
+    }
+
+    // ── CPU geodesic validation ───────────────────────────────────────────────
+    cpuValidation(metric, config);
+
+    // ── GPU ray tracer ────────────────────────────────────────────────────────
+    RayTracer rayTracer;
+    if (!rayTracer.init(config.render.width, config.render.height)) {
+        LOG_ERROR("Main", "Failed to initialise GPU ray tracer");
+        return 1;
+    }
+
+    RayTracerParams rtParams;
+    rtParams.mass            = static_cast<float>(config.blackhole.mass);
+    rtParams.rs              = static_cast<float>(config.blackhole.rs);
+    rtParams.cam_distance    = static_cast<float>(config.camera.distance);
+    rtParams.cam_inclination = static_cast<float>(config.camera.inclination);
+    rtParams.cam_fov         = static_cast<float>(config.camera.fov);
+    rtParams.max_steps       = config.render.max_steps;
+    rtParams.step_size       = static_cast<float>(config.render.step_size);
+    rtParams.abort_distance  = static_cast<float>(config.render.abort_distance);
+
     // ── Main loop ─────────────────────────────────────────────────────────────
+    bool needsRender = true;  // only dispatch compute when params change
+
     while (!window.shouldClose()) {
         window.pollEvents();
 
@@ -58,23 +162,59 @@ int main(int argc, char* argv[]) {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // Info panel
+        // ── Info & control panel ──────────────────────────────────────────────
         ImGui::Begin("Schwarzschild Black Hole");
+
+        // FPS / renderer info
+        ImGui::Text("FPS: %.1f (%.1f ms)", ImGui::GetIO().Framerate,
+                     1000.0f / ImGui::GetIO().Framerate);
+        ImGui::Text("Renderer: %s", glRendererStr.c_str());
+        if (isSoftwareRenderer) {
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f),
+                               "Software rendering — no GPU acceleration");
+        }
+
+        ImGui::Separator();
         ImGui::Text("Mass M = %.3f", metric.mass());
         ImGui::Text("Schwarzschild radius rs = %.3f", metric.schwarzschildRadius());
         ImGui::Text("Photon sphere r = %.3f", metric.photonSphere());
         ImGui::Text("ISCO r = %.3f", metric.iscoRadius());
+
+        ImGui::Separator();
+        ImGui::Text("Camera");
+        bool changed = false;
+        changed |= ImGui::SliderFloat("Distance",    &rtParams.cam_distance,    5.0f, 100.0f);
+        changed |= ImGui::SliderFloat("Inclination", &rtParams.cam_inclination, 1.0f, 179.0f);
+        changed |= ImGui::SliderFloat("FOV",         &rtParams.cam_fov,         10.0f, 120.0f);
+
+        ImGui::Separator();
+        ImGui::Text("Integration");
+        changed |= ImGui::SliderFloat("Step size",      &rtParams.step_size,      0.01f, 1.0f, "%.3f");
+        changed |= ImGui::SliderInt("Max steps",        &rtParams.max_steps,      100, 50000);
+        changed |= ImGui::SliderFloat("Abort distance", &rtParams.abort_distance, 20.0f, 500.0f);
+
         ImGui::Separator();
         ImGui::Text("Render: %d x %d", config.render.width, config.render.height);
-        ImGui::Text("Max steps: %d", config.render.max_steps);
-        ImGui::Text("Step size: %.4f", config.render.step_size);
+
+        if (ImGui::Button("Force Re-render")) changed = true;
+
         ImGui::End();
 
-        // Render
-        ImGui::Render();
+        needsRender |= changed;
+
+        // ── Render ────────────────────────────────────────────────────────────
         glViewport(0, 0, window.getWidth(), window.getHeight());
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
+
+        if (needsRender) {
+            rayTracer.render(rtParams);
+            needsRender = false;
+        } else {
+            rayTracer.drawLastFrame();
+        }
+
+        ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         window.swapBuffers();

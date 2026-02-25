@@ -16,9 +16,9 @@
         "temperature": 1.0
     },
     "rendering": {
-        "width": 1280,
-        "height": 720,
-        "max_steps": 10000,
+        "width": 512,
+        "height": 512,
+        "max_steps": 5000,
         "step_size": 0.1,
         "abort_distance": 100.0
     },
