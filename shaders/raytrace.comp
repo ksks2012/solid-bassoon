@@ -309,6 +309,13 @@ void main() {
     vec3 color = vec3(0.0);
     int status = 0;  // 0 = active, 1 = captured, 2 = escaped
 
+    // Track closest approach to the black hole (for photon sphere effects)
+    float r_min = pos.y;
+
+    // Track total azimuthal winding (number of orbits around the BH)
+    float totalDeltaPhi = 0.0;
+    float prevPhi = pos.w;
+
     for (int i = 0; i < u_max_steps; ++i) {
         float h_eff = adaptiveStep(pos.y, u_rs, u_step_size);
         rk4Step(pos, mom, u_rs, h_eff);
@@ -317,10 +324,16 @@ void main() {
         pos.z = clamp(pos.z, 0.001, PI - 0.001);
 
         float r = pos.y;
+        r_min = min(r_min, r);
+
+        // Accumulate azimuthal winding (handle wrap-around)
+        float dPhi = pos.w - prevPhi;
+        if (dPhi > PI)  dPhi -= 2.0 * PI;
+        if (dPhi < -PI) dPhi += 2.0 * PI;
+        totalDeltaPhi += abs(dPhi);
+        prevPhi = pos.w;
 
         // Termination: captured by black hole
-        // Use a generous buffer above rs — float precision cannot resolve
-        // the Boyer-Lindquist coordinate singularity at r = rs.
         if (r <= u_rs * 1.05) {
             status = 1;
             break;
@@ -333,13 +346,80 @@ void main() {
         }
     }
 
-    // Colour based on termination
+    // ── Colour based on termination ───────────────────────────────────────────
+    //
+    // Photon sphere shadow (Feature 8):
+    //
+    // The photon sphere at r = 1.5·rs hosts unstable circular photon orbits.
+    // Rays that pass close to it undergo strong deflection:
+    //   - Rays just inside the critical impact parameter → CAPTURED (black)
+    //   - Rays just outside → ESCAPED but highly wound (photon ring)
+    //
+    // The "shadow" is the sharp boundary between captured and escaped rays.
+    // We enhance the shadow edge by:
+    //   1. Rendering a bright photon ring at the boundary — escaped rays that
+    //      came close to the photon sphere (small r_min) are brightened based
+    //      on how many times they wound around the BH (totalDeltaPhi).
+    //   2. Keeping the interior (captured) pure black.
+    //
+    // The photon ring brightness ~ number of half-orbits, because each orbit
+    // collects light from different sky directions, creating the classic
+    // "stacked image" effect near the shadow edge.
+
+    float r_photon = 1.5 * u_rs;  // photon sphere radius
+
     if (status == 1) {
-        color = vec3(0.0);               // Black — inside event horizon
+        // ── Captured: pure black (inside the shadow) ──────────────────────────
+        color = vec3(0.0);
+
     } else if (status == 2) {
-        color = skyColor(pos);           // Sky / background
+        // ── Escaped: background starfield + photon ring glow ──────────────────
+        vec3 sky = skyColor(pos);
+
+        // Photon ring enhancement:
+        // Rays that grazed the photon sphere (r_min close to r_photon)
+        // are brightened. The closer to the critical orbit, the more the ray
+        // wound around the BH, and the brighter the accumulated glow.
+        float proximity = (r_min - u_rs) / (r_photon - u_rs);  // 0 at horizon, 1 at photon sphere
+        proximity = clamp(proximity, 0.0, 3.0);
+
+        // Number of half-orbits as a glow factor
+        // A ray at the photon sphere would orbit forever; near it, it winds
+        // several times. Each winding ≈ π radians of azimuthal travel.
+        float nOrbits = totalDeltaPhi / (2.0 * PI);
+
+        // Glow is strongest when r_min is near r_photon and winding is high
+        float glowStrength = 0.0;
+        if (proximity < 2.0) {
+            // Exponential glow based on winding number
+            // More orbits = exponentially brighter (logarithmic pileup)
+            glowStrength = max(0.0, nOrbits - 0.5);  // subtract baseline half-orbit
+            glowStrength = 1.0 - exp(-glowStrength * 1.5);
+
+            // Sharpen near the photon sphere
+            float edge = smoothstep(2.0, 0.5, proximity);
+            glowStrength *= edge;
+        }
+
+        // Photon ring colour: warm white-gold (gravitationally blueshifted light)
+        vec3 ringColor = vec3(1.0, 0.95, 0.8);
+
+        color = sky + ringColor * glowStrength * 0.8;
+        color = clamp(color, 0.0, 1.0);
+
     } else {
-        color = vec3(1.0, 0.0, 1.0);    // Magenta — max steps (debug)
+        // ── MAX_STEPS: photon sphere orbit (debug) ────────────────────────────
+        // These rays are trapped near r_photon — show as dim orange ring
+        // instead of harsh magenta, since they represent real photon ring light.
+        float proximity = (r_min - u_rs) / (r_photon - u_rs);
+        if (proximity > 0.5 && proximity < 1.5) {
+            // Near photon sphere — show as photon ring
+            float nOrbits = totalDeltaPhi / (2.0 * PI);
+            float glow = 1.0 - exp(-nOrbits * 0.5);
+            color = vec3(1.0, 0.85, 0.6) * glow;
+        } else {
+            color = vec3(1.0, 0.0, 1.0);  // Magenta — genuine convergence failure
+        }
     }
 
     imageStore(outputImage, pixel, vec4(color, 1.0));
