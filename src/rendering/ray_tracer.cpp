@@ -222,6 +222,12 @@ void RayTracer::render(const RayTracerParams& params) {
     glUniform1f(glGetUniformLocation(computeProgram_, "u_src_radius"),     params.src_radius);
     glUniform1f(glGetUniformLocation(computeProgram_, "u_src_brightness"), params.src_brightness);
 
+    // Thin accretion disk
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_disk_inner"),   params.disk_inner);
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_disk_outer"),   params.disk_outer);
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_disk_temp"),    params.disk_temp);
+    glUniform1i(glGetUniformLocation(computeProgram_, "u_disk_enabled"), params.disk_enabled);
+
     // Dispatch: one thread per pixel, work groups of 16×16
     GLuint groupsX = (width_  + 15) / 16;
     GLuint groupsY = (height_ + 15) / 16;

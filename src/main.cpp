@@ -151,6 +151,12 @@ int main(int argc, char* argv[]) {
     rtParams.step_size       = static_cast<float>(config.render.step_size);
     rtParams.abort_distance  = static_cast<float>(config.render.abort_distance);
 
+    // Accretion disk from config
+    rtParams.disk_inner   = static_cast<float>(config.disk.inner_radius);
+    rtParams.disk_outer   = static_cast<float>(config.disk.outer_radius);
+    rtParams.disk_temp    = static_cast<float>(config.disk.temperature);
+    rtParams.disk_enabled = 1;
+
     // ── Main loop ─────────────────────────────────────────────────────────────
     bool needsRender = true;  // only dispatch compute when params change
 
@@ -223,6 +229,30 @@ int main(int argc, char* argv[]) {
             ImGui::Text("it lies directly behind the BH, producing a");
             ImGui::Text("complete Einstein ring via gravitational lensing.");
             ImGui::EndTooltip();
+        }
+
+        // ── Accretion Disk ────────────────────────────────────────────────────
+        ImGui::Separator();
+        ImGui::Text("Accretion Disk");
+
+        bool diskOn = (rtParams.disk_enabled != 0);
+        if (ImGui::Checkbox("Enable Disk", &diskOn)) {
+            rtParams.disk_enabled = diskOn ? 1 : 0;
+            changed = true;
+        }
+
+        if (diskOn) {
+            changed |= ImGui::SliderFloat("Inner Radius", &rtParams.disk_inner, rtParams.rs * 1.05f, 20.0f, "%.1f");
+            changed |= ImGui::SliderFloat("Outer Radius", &rtParams.disk_outer, rtParams.disk_inner + 1.0f, 50.0f, "%.1f");
+            changed |= ImGui::SliderFloat("Temperature",  &rtParams.disk_temp,  0.1f, 3.0f, "%.2f");
+
+            // Info text
+            float isco = 3.0f * rtParams.rs;
+            ImGui::Text("ISCO = %.1f  (3 rs)", isco);
+            if (rtParams.disk_inner < isco) {
+                ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f),
+                                   "Inner radius < ISCO (unphysical)");
+            }
         }
 
         ImGui::Separator();

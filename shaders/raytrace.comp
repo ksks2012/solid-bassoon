@@ -40,6 +40,14 @@ uniform float u_src_phi;          // azimuth of point source (degrees)
 uniform float u_src_radius;       // angular radius on sky (degrees) — controls apparent size
 uniform float u_src_brightness;   // brightness multiplier (0 = disabled)
 
+// ── Thin accretion disk (equatorial plane) ────────────────────────────────────
+// The disk lies at θ = π/2 from r_in to r_out.  During integration we detect
+// equatorial crossings and colour the ray if it lands on the disk.
+uniform float u_disk_inner;       // inner radius (≥ ISCO for physical disk)
+uniform float u_disk_outer;       // outer radius
+uniform float u_disk_temp;        // peak temperature (normalised brightness)
+uniform int   u_disk_enabled;     // 0 = off, 1 = on
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const float PI = 3.14159265358979323846;
@@ -312,6 +320,71 @@ vec3 skyColor(vec4 pos) {
     return clamp(color, 0.0, 1.0);
 }
 
+// ── Accretion disk emission ───────────────────────────────────────────────────
+//
+// Temperature profile (simplified Novikov-Thorne):
+//   T(r) ∝ r^{-3/4} · [1 - √(r_in/r)]^{1/4}
+//
+// Maps to a blackbody-inspired colour palette:
+//   hot (near ISCO)  → blue-white   (T ~ 1.0)
+//   warm (mid disk)  → yellow-white (T ~ 0.5)
+//   cool (outer edge) → red-orange   (T ~ 0.1)
+//
+// Gravitational redshift dims the emission by √f(r).
+// Doppler boost from Keplerian orbital motion shifts the colour for
+// gas moving toward/away from the observer.
+
+vec3 diskEmission(float r, float phi, float rs, float r_in, float r_out, float temp_scale) {
+    // Normalised radial coordinate: 0 at inner edge, 1 at outer edge
+    float u = (r - r_in) / (r_out - r_in);
+    u = clamp(u, 0.0, 1.0);
+
+    // Novikov-Thorne temperature profile (simplified)
+    float ratio = r_in / r;
+    float T = pow(r_in / r, 0.75) * pow(max(1.0 - sqrt(ratio), 0.001), 0.25);
+    T *= temp_scale;
+
+    // Blackbody colour palette (normalised T from 0 to ~1)
+    //   T > 0.8  → blue-white
+    //   T ~ 0.5  → yellow-white
+    //   T ~ 0.2  → orange
+    //   T < 0.1  → deep red
+    vec3 hotColor  = vec3(0.8, 0.85, 1.0);    // blue-white
+    vec3 warmColor = vec3(1.0, 0.9, 0.6);     // yellow-white
+    vec3 coolColor = vec3(1.0, 0.4, 0.1);     // orange-red
+    vec3 coldColor = vec3(0.5, 0.1, 0.02);    // deep red
+
+    vec3 diskColor;
+    if (T > 0.6) {
+        diskColor = mix(warmColor, hotColor, smoothstep(0.6, 1.0, T));
+    } else if (T > 0.3) {
+        diskColor = mix(coolColor, warmColor, smoothstep(0.3, 0.6, T));
+    } else {
+        diskColor = mix(coldColor, coolColor, smoothstep(0.0, 0.3, T));
+    }
+
+    // Gravitational redshift: emitted light is dimmed by √f at the emission point
+    float f = max(1.0 - rs / r, 0.01);
+    float redshift = sqrt(f);
+
+    // Keplerian Doppler boost (for inclined views):
+    // Orbital velocity v_orb = √(M / r) = √(rs / (2r)) in geometric units.
+    // The line-of-sight component depends on azimuthal angle φ and inclination.
+    // For a prograde disk, gas at angle φ moves in the +φ direction.
+    // Doppler factor δ ≈ 1 / (1 - v_los), where v_los = v_orb · sin(φ) · sin(θ_obs).
+    float v_orb = sqrt(rs / (2.0 * r));
+    float theta_obs = u_cam_inclination * PI / 180.0;
+    float v_los = v_orb * sin(phi) * sin(theta_obs);
+    float doppler = 1.0 / (1.0 - clamp(v_los, -0.9, 0.9));
+
+    // Combined intensity: temperature brightness × redshift × Doppler^3
+    // (Doppler^3 for relativistic beaming of bolometric flux)
+    float intensity = T * redshift * doppler * doppler * doppler;
+    intensity = clamp(intensity, 0.0, 5.0);
+
+    return diskColor * intensity;
+}
+
 // ── Adaptive step size ────────────────────────────────────────────────────────
 // Scale the step down near the horizon to avoid numerical instability from
 // the Boyer-Lindquist coordinate singularity at r = rs.
@@ -338,7 +411,7 @@ void main() {
     initRay(pixel, u_resolution, pos, mom);
 
     vec3 color = vec3(0.0);
-    int status = 0;  // 0 = active, 1 = captured, 2 = escaped
+    int status = 0;  // 0 = active, 1 = captured, 2 = escaped, 3 = hit disk
 
     // Track closest approach to the black hole (for photon sphere effects)
     float r_min = pos.y;
@@ -346,6 +419,16 @@ void main() {
     // Track total azimuthal winding (number of orbits around the BH)
     float totalDeltaPhi = 0.0;
     float prevPhi = pos.w;
+
+    // ── Accretion disk crossing detection state ───────────────────────────────
+    // We track the previous step's θ and r to detect when the ray crosses
+    // the equatorial plane (θ = π/2).
+    float prevTheta = pos.z;
+    float prevR     = pos.y;
+    vec3  diskColor = vec3(0.0);       // colour if ray hits the disk
+    float diskAlpha = 0.0;             // accumulated disk opacity (for multiple crossings)
+    vec3  diskAccum = vec3(0.0);       // accumulated disk emission from all crossings
+    const float HALF_PI = PI * 0.5;
 
     for (int i = 0; i < u_max_steps; ++i) {
         float h_eff = adaptiveStep(pos.y, u_rs, u_step_size);
@@ -363,6 +446,36 @@ void main() {
         if (dPhi < -PI) dPhi += 2.0 * PI;
         totalDeltaPhi += abs(dPhi);
         prevPhi = pos.w;
+
+        // ── Disk crossing check ───────────────────────────────────────────────
+        // Detect when the ray crosses θ = π/2 between consecutive steps.
+        // The disk is optically thick, so the first crossing terminates the ray
+        // (the disk is opaque — light does not pass through it).
+        if (u_disk_enabled == 1 && status == 0) {
+            float dThPrev = prevTheta - HALF_PI;
+            float dThCurr = pos.z     - HALF_PI;
+
+            // Sign change → crossing occurred
+            if (dThPrev * dThCurr < 0.0) {
+                // Linear interpolation to find crossing point
+                float t_cross = dThPrev / (dThPrev - dThCurr);
+                float r_cross = prevR + t_cross * (r - prevR);
+                float phi_cross = prevPhi + t_cross * dPhi;
+
+                // Check if crossing radius is within disk bounds
+                if (r_cross >= u_disk_inner && r_cross <= u_disk_outer) {
+                    // Ray hits the disk — compute emission
+                    diskAccum = diskEmission(r_cross, phi_cross, u_rs,
+                                             u_disk_inner, u_disk_outer, u_disk_temp);
+                    status = 3;  // hit disk (opaque — terminates ray)
+                    break;
+                }
+            }
+        }
+
+        // Update previous-step state for next crossing check
+        prevTheta = pos.z;
+        prevR     = r;
 
         // Termination: captured by black hole
         if (r <= u_rs * 1.05) {
@@ -402,6 +515,11 @@ void main() {
     if (status == 1) {
         // ── Captured: pure black (inside the shadow) ──────────────────────────
         color = vec3(0.0);
+
+    } else if (status == 3) {
+        // ── Hit accretion disk ────────────────────────────────────────────────
+        // Opaque disk: the ray terminates with the disk emission colour.
+        color = clamp(diskAccum, 0.0, 1.0);
 
     } else if (status == 2) {
         // ── Escaped: background starfield + photon ring glow ──────────────────

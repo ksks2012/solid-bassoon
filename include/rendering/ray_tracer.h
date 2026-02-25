@@ -41,6 +41,12 @@ struct RayTracerParams {
     float src_phi        = 180.0f;  // azimuth (degrees) — 180° = directly behind BH
     float src_radius     = 0.5f;    // angular radius (degrees)
     float src_brightness = 0.0f;    // brightness multiplier (0 = disabled)
+
+    // Thin accretion disk (equatorial plane)
+    float disk_inner     = 6.0f;    // inner radius (ISCO = 3·rs for Schwarzschild)
+    float disk_outer     = 20.0f;   // outer radius
+    float disk_temp      = 1.0f;    // peak temperature (normalised brightness)
+    int   disk_enabled   = 1;       // 0 = off, 1 = on
 };
 
 class RayTracer {
