@@ -204,7 +204,7 @@ int main(int argc, char* argv[]) {
 
         // Preset: perfect Einstein ring (source directly behind BH)
         if (ImGui::Button("Einstein Ring Preset")) {
-            rtParams.src_theta      = rtParams.cam_inclination;  // match camera θ
+            rtParams.src_theta      = 180.0f - rtParams.cam_inclination;  // match camera θ
             rtParams.src_phi        = 180.0f;                    // directly behind BH
             rtParams.src_radius     = 0.5f;
             rtParams.src_brightness = 5.0f;
