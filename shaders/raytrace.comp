@@ -163,23 +163,24 @@ void initRay(ivec2 pixel, ivec2 res, out vec4 pos, out vec4 mom) {
 }
 
 // ── Sky colour ────────────────────────────────────────────────────────────────
-// Simple checker-board / gradient on the celestial sphere for visual debugging.
+// Checker-board pattern on the celestial sphere for visual debugging.
+// Uses bright, clearly distinguishable colours so we can verify lensing.
 
 vec3 skyColor(vec4 pos) {
     float theta = pos.z;
     float phi   = pos.w;
 
-    // Latitude-longitude grid
-    float gridTh  = step(0.02, abs(sin(theta * 10.0)));
-    float gridPhi = step(0.02, abs(sin(phi   * 10.0)));
-    float grid    = min(gridTh, gridPhi);
+    // Checker pattern: alternate two colours on the celestial sphere
+    // Use modular arithmetic on (θ, φ) to create tiles
+    float tileTh  = floor(mod(theta * 5.0 / PI, 2.0));
+    float tilePhi = floor(mod(phi   * 5.0 / PI, 2.0));
+    float checker = mod(tileTh + tilePhi, 2.0);
 
-    // Base gradient: warm at equator, cool at poles
-    vec3 base = mix(vec3(0.05, 0.05, 0.15),   // pole colour
-                    vec3(0.12, 0.08, 0.03),    // equator colour
-                    sin(theta));
+    // Two clearly visible colours
+    vec3 colA = vec3(0.2, 0.4, 0.8);   // blue
+    vec3 colB = vec3(0.9, 0.9, 0.9);   // near-white
 
-    return base * (0.5 + 0.5 * grid);
+    return mix(colA, colB, checker);
 }
 
 // ── Adaptive step size ────────────────────────────────────────────────────────
