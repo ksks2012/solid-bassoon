@@ -193,6 +193,38 @@ int main(int argc, char* argv[]) {
         changed |= ImGui::SliderInt("Max steps",        &rtParams.max_steps,      100, 50000);
         changed |= ImGui::SliderFloat("Abort distance", &rtParams.abort_distance, 20.0f, 500.0f);
 
+        // ── Einstein Ring: point light source ─────────────────────────────────
+        ImGui::Separator();
+        ImGui::Text("Point Source (Einstein Ring)");
+
+        changed |= ImGui::SliderFloat("Source Theta",  &rtParams.src_theta,      1.0f, 179.0f, "%.1f deg");
+        changed |= ImGui::SliderFloat("Source Phi",    &rtParams.src_phi,        0.0f, 360.0f, "%.1f deg");
+        changed |= ImGui::SliderFloat("Source Radius", &rtParams.src_radius,     0.1f, 5.0f,   "%.2f deg");
+        changed |= ImGui::SliderFloat("Brightness",    &rtParams.src_brightness, 0.0f, 10.0f,  "%.1f");
+
+        // Preset: perfect Einstein ring (source directly behind BH)
+        if (ImGui::Button("Einstein Ring Preset")) {
+            rtParams.src_theta      = rtParams.cam_inclination;  // match camera θ
+            rtParams.src_phi        = 180.0f;                    // directly behind BH
+            rtParams.src_radius     = 0.5f;
+            rtParams.src_brightness = 5.0f;
+            changed = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Source Off")) {
+            rtParams.src_brightness = 0.0f;
+            changed = true;
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered()) {
+            ImGui::BeginTooltip();
+            ImGui::Text("When the source is at (theta=cam_incl, phi=180),");
+            ImGui::Text("it lies directly behind the BH, producing a");
+            ImGui::Text("complete Einstein ring via gravitational lensing.");
+            ImGui::EndTooltip();
+        }
+
         ImGui::Separator();
         ImGui::Text("Render: %d x %d", config.render.width, config.render.height);
 

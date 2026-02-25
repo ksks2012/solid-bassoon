@@ -35,6 +35,12 @@ struct RayTracerParams {
     int   max_steps     = 1000;
     float step_size     = 0.05f;
     float abort_distance = 100.0f;
+
+    // Point light source on the celestial sphere (Einstein ring)
+    float src_theta      = 80.0f;   // colatitude (degrees) — default matches camera inclination
+    float src_phi        = 180.0f;  // azimuth (degrees) — 180° = directly behind BH
+    float src_radius     = 0.5f;    // angular radius (degrees)
+    float src_brightness = 0.0f;    // brightness multiplier (0 = disabled)
 };
 
 class RayTracer {

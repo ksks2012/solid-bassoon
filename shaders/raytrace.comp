@@ -31,6 +31,15 @@ uniform float u_step_size;
 uniform float u_abort_distance;
 uniform ivec2 u_resolution;
 
+// ── Point light source on the celestial sphere (for Einstein ring) ────────────
+// Position in Boyer-Lindquist angular coordinates.
+// When the source is directly behind the BH (θ_src ≈ θ_obs, φ_src ≈ π),
+// gravitational lensing produces a complete Einstein ring.
+uniform float u_src_theta;        // colatitude of point source (degrees)
+uniform float u_src_phi;          // azimuth of point source (degrees)
+uniform float u_src_radius;       // angular radius on sky (degrees) — controls apparent size
+uniform float u_src_brightness;   // brightness multiplier (0 = disabled)
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const float PI = 3.14159265358979323846;
@@ -208,6 +217,28 @@ vec3 skyColor(vec4 pos) {
     float theta = pos.z;
     float phi   = pos.w;
 
+    // ── Point light source (Einstein ring feature) ────────────────────────────
+    // Compute angular separation on the celestial sphere between the escaped
+    // ray direction and the source position using the spherical law of cosines:
+    //   cos(δ) = cos(θ₁)cos(θ₂) + sin(θ₁)sin(θ₂)cos(φ₁ − φ₂)
+    // A smooth falloff models the apparent disk of the source.
+    vec3 sourceColor = vec3(0.0);
+    if (u_src_brightness > 0.0) {
+        float srcTheta = u_src_theta * PI / 180.0;
+        float srcPhi   = u_src_phi   * PI / 180.0;
+        float srcRad   = u_src_radius * PI / 180.0;
+
+        float cosAngSep = cos(theta) * cos(srcTheta)
+                        + sin(theta) * sin(srcTheta) * cos(phi - srcPhi);
+        cosAngSep = clamp(cosAngSep, -1.0, 1.0);
+        float angSep = acos(cosAngSep);
+
+        // Soft disk: bright core with smooth edge
+        // Inner 50% of radius: full brightness; outer 50%: smoothstep fade
+        float intensity = 1.0 - smoothstep(srcRad * 0.5, srcRad, angSep);
+        sourceColor = vec3(1.0, 0.95, 0.85) * intensity * u_src_brightness;
+    }
+
     // ── Base: dark sky gradient ───────────────────────────────────────────────
     // Slight blue tint varying with latitude
     float lat = abs(theta / PI - 0.5) * 2.0;  // 0 at equator, 1 at poles
@@ -276,7 +307,7 @@ vec3 skyColor(vec4 pos) {
     vec3 gridColor = vec3(0.05, 0.1, 0.15) * grid;
 
     // ── Combine ───────────────────────────────────────────────────────────────
-    vec3 color = skyBase + mwColor + starColor + gridColor;
+    vec3 color = skyBase + mwColor + starColor + gridColor + sourceColor;
 
     return clamp(color, 0.0, 1.0);
 }

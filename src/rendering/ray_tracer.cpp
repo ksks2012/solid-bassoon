@@ -216,6 +216,12 @@ void RayTracer::render(const RayTracerParams& params) {
     glUniform1f(glGetUniformLocation(computeProgram_, "u_abort_distance"), params.abort_distance);
     glUniform2i(glGetUniformLocation(computeProgram_, "u_resolution"),     width_, height_);
 
+    // Point light source (Einstein ring)
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_src_theta"),      params.src_theta);
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_src_phi"),        params.src_phi);
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_src_radius"),     params.src_radius);
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_src_brightness"), params.src_brightness);
+
     // Dispatch: one thread per pixel, work groups of 16×16
     GLuint groupsX = (width_  + 15) / 16;
     GLuint groupsY = (height_ + 15) / 16;
