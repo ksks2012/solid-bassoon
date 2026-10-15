@@ -105,6 +105,38 @@ The executable is placed in `bin/BlackholeRenderer`.
 
 Configuration is loaded from `etc/config.json`.
 
+#### GPU rendering
+
+The renderer needs an OpenGL 4.3+ **Core Profile** context with compute-shader
+support. On a normal Linux desktop with the vendor driver installed, the GPU is
+selected automatically — no extra configuration is required:
+
+```bash
+# Native Linux (NVIDIA proprietary / AMD / Intel Mesa)
+./bin/BlackholeRenderer
+```
+
+On **WSL2**, OpenGL is provided by Mesa's `d3d12` Gallium driver through the
+Windows GPU passthrough (`/dev/dxg`). The default driver selection, however,
+falls back to the CPU `llvmpipe`, so you must select the D3D12 driver
+explicitly:
+
+```bash
+# WSL2 (Windows 11 + WSLg)
+GALLIUM_DRIVER=d3d12 ./bin/BlackholeRenderer
+```
+
+Check the renderer string in the startup log or the ImGui panel: it should read
+`D3D12 (NVIDIA GeForce RTX ...)`. If it reads `llvmpipe` you are on the software
+fallback (a warning is logged).
+
+WSL2 GPU requirements: Windows 11 with WSLg, the vendor WSL driver installed on
+the Windows side, and `libgl1-mesa-dri` in the distro (provides
+`d3d12_dri.so`).
+
+Measured on an RTX 4070 at 512×512 with 5000 max steps: **~10 ms/frame
+(~100 FPS)** via D3D12 versus **~550 ms/frame (~2 FPS)** on llvmpipe.
+
 ---
 
 ## Configuration
@@ -123,7 +155,7 @@ Edit `etc/config.json` to adjust parameters:
         "fov": 60.0
     },
     "accretion_disk": {
-        "inner_radius": 3.0,
+        "inner_radius": 6.0,
         "outer_radius": 12.0,
         "temperature": 1.0
     },
@@ -132,7 +164,9 @@ Edit `etc/config.json` to adjust parameters:
         "height": 512,
         "max_steps": 5000,
         "step_size": 0.1,
-        "abort_distance": 100.0
+        "abort_distance": 100.0,
+        "exposure": 1.0,
+        "gamma": 1.0
     }
 }
 ```
