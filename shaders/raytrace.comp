@@ -61,7 +61,7 @@ uniform float u_gamma;            // display gamma (default 1.0 = identity)
 uniform int   u_jet_enabled;          // 0 = off (default), 1 = on
 uniform float u_jet_base_radius;      // cone foot radius at z = 0
 uniform float u_jet_opening_angle;    // half-opening angle (degrees)
-uniform float u_jet_profile_exponent; // 1 = cone, 0.5 = parabola (reserved)
+uniform float u_jet_profile_exponent; // shape exponent: 1 = cone, 0.5 = parabola
 uniform float u_jet_max_height;       // axial extent of the jet
 uniform float u_jet_radial_sigma;     // transverse Gaussian width
 uniform float u_jet_z_falloff;        // axial falloff length scale
@@ -431,28 +431,56 @@ float adaptiveStep(float r, float rs, float h_base) {
 // described in the (z, ρ) plane, with z = r·cosθ along the axis and
 // ρ = r·sinθ the cylindrical radius:
 //
-//   rho_width(z) = base_radius + |z| · tan(opening_angle)     (cone, p = 1)
-//   j(ρ, z)      = exp( -(ρ / rho_width)² / (2·σ²) )           (transverse Gaussian)
+//   rho_width(z) = base_radius + |z|^p · tan(opening_angle)   (p = profile_exponent)
+//   gauss(ρ, z)  = exp( -(ρ / rho_width)² / (2·σ²) )           (transverse Gaussian)
+//   axial(z)     = (1 + |z|/z_falloff)^(-axial_falloff)        (bounded at z = 0)
+//   top(z)       = smoothstep(max_height, 0.8·max_height, |z|)
+//   j(ρ, z)      = gauss · axial · top
 //
-// Phase 1 (ticket 0004) implements only the transverse Gaussian and a hard
-// axial extent of ±max_height; the smooth axial fall-off, soft top and the
-// shape exponent (profile_exponent) arrive in ticket 0005.  The disabled
-// (optically thin) jet is emitted additively, so it never occludes the disk,
-// stars or Einstein rings.
+// `p = 1` gives the cone; lowering it toward 0.5 turns the cone into a parabola
+// by changing a single parameter.  The axial term is finite (= 1) on the axis
+// at z = 0, so there is no central blow-up or hot spot, and the soft top fades
+// the emission to zero before `max_height`, so there is no hard cut-off.
+//
+// The whole kernel is skipped for rays outside the solid of revolution (a cheap
+// bounding early-out).  Emission is optically thin and added to every terminal
+// colour, so the jet never occludes the disk, stars or Einstein rings.
 float jetDensity(vec4 pos) {
     float r     = pos.y;
     float theta = pos.z;
     float z     = r * cos(theta);
+    float az    = abs(z);          // baryon-symmetric bipolar jet
     float rho   = r * sin(theta);
 
-    // Hard axial extent — replaced by a soft top in ticket 0005.
-    if (abs(z) >= u_jet_max_height) return 0.0;
+    // ── Bounding early-out (axial): outside the finite extent, nothing to do ──
+    if (az >= u_jet_max_height) return 0.0;
+
+    float exponent = max(u_jet_profile_exponent, 0.05);   // protected shape exponent
+
+    // Cone by default: p = 1 needs no pow; any other p turns it into a parabola.
+    float axial_shape = az;
+    if (abs(exponent - 1.0) > 1e-4) axial_shape = pow(az, exponent);
 
     float opening   = radians(u_jet_opening_angle);
-    float rho_width = u_jet_base_radius + abs(z) * tan(opening);
+    float rho_width = u_jet_base_radius + axial_shape * tan(opening);
     float sigma     = u_jet_radial_sigma;
 
-    return exp(-pow(rho / rho_width, 2.0) / (2.0 * sigma * sigma));
+    // ── Bounding early-out (transverse): beyond 3σ the Gaussian is negligible ─
+    if (rho >= 3.0 * sigma * rho_width) return 0.0;
+
+    // Transverse Gaussian — solid volume, core-bright and rim-soft.
+    float q     = rho / rho_width;
+    float gauss = exp(-q * q / (2.0 * sigma * sigma));
+
+    // Bounded axial power-law: brightest at the base, declining outward.
+    float axial = pow(1.0 + az / u_jet_z_falloff, -u_jet_axial_falloff);
+
+    // Soft top: fade between 0.8·max_height and max_height → no hard cut-off.
+    // Written the conformant way around (edge0 < edge1, then inverted), because
+    // GLSL leaves smoothstep undefined for edge0 >= edge1.
+    axial *= 1.0 - smoothstep(u_jet_max_height * 0.8, u_jet_max_height, az);
+
+    return gauss * axial;
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
