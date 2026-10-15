@@ -53,6 +53,8 @@ void Config::parseConfig(const json& j) {
         if (r.contains("max_steps"))      render.max_steps      = r["max_steps"].get<int>();
         if (r.contains("step_size"))      render.step_size      = r["step_size"].get<double>();
         if (r.contains("abort_distance")) render.abort_distance = r["abort_distance"].get<double>();
+        if (r.contains("exposure"))       render.exposure       = r["exposure"].get<double>();
+        if (r.contains("gamma"))          render.gamma          = r["gamma"].get<double>();
     }
 
     // Logger

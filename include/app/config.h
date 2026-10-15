@@ -30,7 +30,7 @@ struct CameraParams {
 
 // Accretion disk geometry
 struct DiskParams {
-    double inner_radius = 3.0;   // ISCO for Schwarzschild
+    double inner_radius = 6.0;   // ISCO = 3·rs for Schwarzschild (rs = 2)
     double outer_radius = 12.0;
     double temperature  = 1.0;   // normalised
 };
@@ -42,6 +42,8 @@ struct RenderParams {
     int    max_steps      = 1000;
     double step_size      = 0.05;
     double abort_distance = 100.0;
+    double exposure       = 1.0;   // linear exposure multiplier
+    double gamma          = 1.0;   // display gamma (1.0 = linear/identity)
 };
 
 class Config {

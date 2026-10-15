@@ -228,6 +228,10 @@ void RayTracer::render(const RayTracerParams& params) {
     glUniform1f(glGetUniformLocation(computeProgram_, "u_disk_temp"),    params.disk_temp);
     glUniform1i(glGetUniformLocation(computeProgram_, "u_disk_enabled"), params.disk_enabled);
 
+    // Display / tone mapping
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_exposure"), params.exposure);
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_gamma"),    params.gamma);
+
     // Dispatch: one thread per pixel, work groups of 16×16
     GLuint groupsX = (width_  + 15) / 16;
     GLuint groupsY = (height_ + 15) / 16;

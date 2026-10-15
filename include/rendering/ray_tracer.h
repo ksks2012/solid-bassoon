@@ -47,6 +47,10 @@ struct RayTracerParams {
     float disk_outer     = 20.0f;   // outer radius
     float disk_temp      = 1.0f;    // peak temperature (normalised brightness)
     int   disk_enabled   = 1;       // 0 = off, 1 = on
+
+    // Display / tone mapping
+    float exposure       = 1.0f;    // linear exposure multiplier
+    float gamma          = 1.0f;    // display gamma (1.0 = linear/identity)
 };
 
 class RayTracer {

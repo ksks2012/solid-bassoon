@@ -150,6 +150,8 @@ int main(int argc, char* argv[]) {
     rtParams.max_steps       = config.render.max_steps;
     rtParams.step_size       = static_cast<float>(config.render.step_size);
     rtParams.abort_distance  = static_cast<float>(config.render.abort_distance);
+    rtParams.exposure        = static_cast<float>(config.render.exposure);
+    rtParams.gamma           = static_cast<float>(config.render.gamma);
 
     // Accretion disk from config
     rtParams.disk_inner   = static_cast<float>(config.disk.inner_radius);
@@ -254,6 +256,12 @@ int main(int argc, char* argv[]) {
                                    "Inner radius < ISCO (unphysical)");
             }
         }
+
+        // ── Display / tone mapping ────────────────────────────────────────────
+        ImGui::Separator();
+        ImGui::Text("Display (Tone Mapping)");
+        changed |= ImGui::SliderFloat("Exposure", &rtParams.exposure, 0.1f, 4.0f, "%.2f");
+        changed |= ImGui::SliderFloat("Gamma",    &rtParams.gamma,    1.0f, 3.0f, "%.2f");
 
         ImGui::Separator();
         ImGui::Text("Render: %d x %d", config.render.width, config.render.height);

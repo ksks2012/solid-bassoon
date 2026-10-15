@@ -48,6 +48,12 @@ uniform float u_disk_outer;       // outer radius
 uniform float u_disk_temp;        // peak temperature (normalised brightness)
 uniform int   u_disk_enabled;     // 0 = off, 1 = on
 
+// ── Display / tone mapping ────────────────────────────────────────────────────
+// Global display transform applied once at the end of main().  The shader
+// accumulates LINEAR HDR radiance; these uniforms map it to displayable LDR.
+uniform float u_exposure;         // linear exposure multiplier (default 1.0)
+uniform float u_gamma;            // display gamma (default 1.0 = identity)
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const float PI = 3.14159265358979323846;
@@ -315,9 +321,11 @@ vec3 skyColor(vec4 pos) {
     vec3 gridColor = vec3(0.05, 0.1, 0.15) * grid;
 
     // ── Combine ───────────────────────────────────────────────────────────────
+    // Returned linear and unclamped so HDR sources (e.g. a bright point light)
+    // are preserved for the global tone map at the end of main().
     vec3 color = skyBase + mwColor + starColor + gridColor + sourceColor;
 
-    return clamp(color, 0.0, 1.0);
+    return color;
 }
 
 // ── Accretion disk emission ───────────────────────────────────────────────────
@@ -519,7 +527,9 @@ void main() {
     } else if (status == 3) {
         // ── Hit accretion disk ────────────────────────────────────────────────
         // Opaque disk: the ray terminates with the disk emission colour.
-        color = clamp(diskAccum, 0.0, 1.0);
+        // Kept linear and unclamped here — the global tone map below handles
+        // HDR roll-off instead of clipping.
+        color = diskAccum;
 
     } else if (status == 2) {
         // ── Escaped: background starfield + photon ring glow ──────────────────
@@ -554,7 +564,6 @@ void main() {
         vec3 ringColor = vec3(1.0, 0.95, 0.8);
 
         color = sky + ringColor * glowStrength * 0.8;
-        color = clamp(color, 0.0, 1.0);
 
     } else {
         // ── MAX_STEPS: photon sphere orbit (debug) ────────────────────────────
@@ -571,5 +580,21 @@ void main() {
         }
     }
 
-    imageStore(outputImage, pixel, vec4(color, 1.0));
+    // ── Global tone mapping (display transform) ───────────────────────────────
+    // Map linear HDR radiance to displayable LDR. With the defaults
+    // (exposure = 1, gamma = 1) the normal range is left untouched — visually
+    // identical to the previous clamp — while HDR pixels (photon-ring glow,
+    // point source) roll off smoothly instead of clipping to flat white.
+    //   exposure  → linear scale
+    //   soft knee → identity below `knee`, compresses highlights above it,
+    //               approaching `knee + width` (never reaches it)
+    //   gamma     → optional display encoding (default 1.0 = identity)
+    vec3 c = max(color * u_exposure, 0.0);
+    const float knee  = 0.8;
+    const float width = 0.2;
+    vec3 over = max(c - knee, 0.0);
+    vec3 mapped = min(c, knee) + over * width / (width + over);
+    mapped = pow(mapped, vec3(1.0 / max(u_gamma, 1e-3)));
+
+    imageStore(outputImage, pixel, vec4(mapped, 1.0));
 }
