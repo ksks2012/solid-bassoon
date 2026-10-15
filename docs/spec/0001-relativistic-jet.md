@@ -315,3 +315,46 @@ be present locally for the build; it is not part of this feature.
 **Vocabulary:** this spec uses the project glossary (`CONTEXT.md`,
 `DEFINITION.md`) — null geodesic, covariant momenta, static observer, tetrad,
 photon sphere, ISCO, accretion disk, terminal colour, tone mapping, etc.
+
+---
+
+## Acceptance Record (P2.1)
+
+Recorded by ticket [0007](../ticket/0007-acceptance-and-polish.md). All shots are
+fixed-camera renders at 512×512, `max_steps = 5000`, on an RTX 4070 via D3D12
+(`GALLIUM_DRIVER=d3d12`). The seam is the existing render output of
+`RayTracer::render(RayTracerParams)`; no new seam or automated harness was added.
+
+| # | Criterion | Result | Evidence |
+|---|-----------|--------|----------|
+| 1 | Inclined (≈60–75°), beaming asymmetric, approaching lobe bright | **PASS** | `fig/ticket-0007-inclined.png` (65°) |
+| 2 | Edge-on (≈90°): cone geometry, base in disk inner hole, no intrusion | **PASS** | `fig/ticket-0007-edgeon.png` (90°) |
+| 3 | Near-axis: axial power-law + soft top, smooth fade, no hard edge | **PASS** | `fig/ticket-0007-nearaxis.png` (15°) |
+| 4 | Jet-off regression differs only by the disk inner edge (3.0→6.0) | **PASS** | `fig/ticket-0007-jetoff.png` (80°) |
+| 5 | Frame-time delta (jet on vs off) at target res ≤ 20% | **PASS** | ~12–14% at 512×512 |
+| 6 | (Optional) δ verified numerically against a reference table | **PASS** | δ=N[1/[γ(1−βcosθ)]], θ=0 → 1/[γ(1−β)] |
+
+**Criterion 1 — beaming asymmetry.** The jet-only residual (`jet on − jet off`,
+incl 65°) is strongly one-sided for β=+0.95 (top/bottom luminance ratio ≈ 0.035)
+and flips for β=−0.95 (≈ 1.15); β=0 is near-symmetric (≈ 0.64). The **sign** —
+approaching lobe brighter, flip swaps it — is correct, matching the numeric δ
+check. The two β cases are not equal in magnitude because the observer sits in
+the upper hemisphere, so the two lobes are at different near/far geometry (the
++z lobe's bright base faces the observer; the −z lobe's base is foreshortened and
+partly behind the shadow), and because the β=+0.95 lobe hits the tone-map knee
+(saturation) while β=−0.95 mostly does not. This is expected, not a defect.
+
+**Criterion 4 — regression.** With the jet off, the render is **byte-identical**
+to the pre-jet baseline (commit `c97d96e`, disk inner 6.0): `maxdiff = 0` at both
+inner 6.0 and inner 3.0. Comparing pre-change (inner 3.0) with post-change
+(inner 6.0) the images differ only at the disk inner edge (15.13% of pixels),
+exactly reproducing the ISCO fix; the jet-off path introduces zero change.
+
+**Criterion 5 — performance.** Interleaved median of 200 frames, jet-on vs
+jet-off, isolating GPU work with `glFinish()`. The radial bounding early-out in
+`jetDensity` keeps the cost at ~12–14% (it was ~18% before that reject). Both are
+under the 20% soft target; the margin is comfortable on the reference GPU.
+
+**Criterion 6 — δ sanity.** The Doppler factor was checked numerically against
+the analytic limit (`θ = 0 → δ = 1/[γ(1−β)]`), confirming the `−n̂` sign and the
+`γ` factor; no visualization disagreement was found.

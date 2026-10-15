@@ -446,14 +446,20 @@ float adaptiveStep(float r, float rs, float h_base) {
 // The whole kernel is skipped for rays outside the solid of revolution (a cheap
 // bounding early-out).  Emission is optically thin and added to every terminal
 // colour, so the jet never occludes the disk, stars or Einstein rings.
-float jetDensity(vec4 pos) {
+float jetDensity(vec4 pos, float rBound) {
     float r     = pos.y;
+    // ── Bounding early-out (radial) ───────────────────────────────────────────
+    // The solid of revolution fits inside a sphere of radius rBound, so rays
+    // beyond it can never sample the jet.  Cheapest possible reject: one compare
+    // before the cos, catching the long outward legs of escaping rays.
+    if (r >= rBound) return 0.0;
+
     float theta = pos.z;
-    float z     = r * cos(theta);
-    float az    = abs(z);          // baryon-symmetric bipolar jet
-    float rho   = r * sin(theta);
+    float z     = r * cos(theta);   // only cos is needed: ρ² = r² − z²
+    float az    = abs(z);           // baryon-symmetric bipolar jet
 
     // ── Bounding early-out (axial): outside the finite extent, nothing to do ──
+    // Cheap: rejects far rays after a single cos, before any profile work.
     if (az >= u_jet_max_height) return 0.0;
 
     float exponent = max(u_jet_profile_exponent, 0.05);   // protected shape exponent
@@ -466,12 +472,14 @@ float jetDensity(vec4 pos) {
     float rho_width = u_jet_base_radius + axial_shape * tan(opening);
     float sigma     = u_jet_radial_sigma;
 
-    // ── Bounding early-out (transverse): beyond 3σ the Gaussian is negligible ─
-    if (rho >= 3.0 * sigma * rho_width) return 0.0;
+    // ── Bounding early-out (transverse) ──────────────────────────────────────
+    // Compare ρ² = r² − z² against (3σ·ρ_width)² — avoids sqrt/sin entirely.
+    float rho2 = r * r - z * z;
+    float lim  = 3.0 * sigma * rho_width;
+    if (rho2 >= lim * lim) return 0.0;
 
     // Transverse Gaussian — solid volume, core-bright and rim-soft.
-    float q     = rho / rho_width;
-    float gauss = exp(-q * q / (2.0 * sigma * sigma));
+    float gauss = exp(-rho2 / (2.0 * sigma * sigma * rho_width * rho_width));
 
     // Bounded axial power-law: brightest at the base, declining outward.
     float axial = pow(1.0 + az / u_jet_z_falloff, -u_jet_axial_falloff);
@@ -536,6 +544,19 @@ void main() {
     vec4 pos, mom;
     initRay(pixel, u_resolution, pos, mom);
 
+    // Enclosing-sphere radius of the jet (constant per frame).  The solid of
+    // revolution spans |z| < max_height and ρ < 3σ·ρ_width, with
+    // ρ_width ≤ base_radius + max_height^p·tan(opening); the largest corner is
+    // at r = √(max_height² + ρ_max²).  Computed once per ray so the per-step
+    // kernel can reject far steps with a single compare.  Unused when jet off.
+    float jetRBound = 0.0;
+    if (u_jet_enabled == 1) {
+        float axialMax = pow(u_jet_max_height, max(u_jet_profile_exponent, 0.05));
+        float rhoMax   = 3.0 * u_jet_radial_sigma *
+                         (u_jet_base_radius + axialMax * tan(radians(u_jet_opening_angle)));
+        jetRBound = sqrt(u_jet_max_height * u_jet_max_height + rhoMax * rhoMax) + 1.0;
+    }
+
     vec3 color = vec3(0.0);
     int status = 0;  // 0 = active, 1 = captured, 2 = escaped, 3 = hit disk
 
@@ -584,7 +605,7 @@ void main() {
         // before the disk-crossing test — so a ray that terminates on the disk
         // carries exactly the foreground jet accumulated up to the hit.
         if (u_jet_enabled == 1) {
-            float j = jetDensity(pos);
+            float j = jetDensity(pos, jetRBound);
             if (j > 0.0) {
                 float f  = max(1.0 - u_rs / r, 1e-4);
                 float ds = h_eff / sqrt(f);

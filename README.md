@@ -40,6 +40,22 @@ Light rays are traced **backwards** through curved spacetime by numerically inte
 |:-----:|:-----:|
 | ![Einstein Ring](fig/9.png) | ![Disk](fig/10.png) |
 
+### P2.1 — Relativistic Jet
+
+| # | Feature | Description |
+|---|---------|-------------|
+| 11 | **Relativistic Jet** | Bipolar, optically-thin emission cone along the spin axis; cone/parabola profile with a soft top fade. Additive — never occludes the disk, stars or Einstein rings |
+| 12 | **Doppler Beaming** | A single bulk velocity `v = sign(z)·β·ẑ` brightens the approaching lobe and dims the receding one by `δ^(3+α)` |
+| 13 | **Spectral Index** | Tunable spectral index `α` controlling the beaming exponent `3 + α` |
+
+| Inclined (beamed toward observer) | Edge-on |
+|:-----:|:-----:|
+| ![Jet inclined](fig/ticket-0007-inclined.png) | ![Jet edge-on](fig/ticket-0007-edgeon.png) |
+
+| Near-axis | Jet off (regression baseline) |
+|:-----:|:-----:|
+| ![Jet near-axis](fig/ticket-0007-nearaxis.png) | ![Jet off](fig/ticket-0007-jetoff.png) |
+
 ---
 
 ## Physics
@@ -75,6 +91,19 @@ Each pixel maps to a direction in this frame, converted to covariant momenta for
 - **Colour**: blackbody palette — blue-white (ISCO) → orange-red (outer edge)
 - **Redshift**: gravitational dimming by √(1 − r_s/r)
 - **Doppler**: Keplerian orbital velocity with δ³ relativistic beaming
+
+### Relativistic Jet
+
+- **Geometry**: optically-thin bipolar solid cone around the symmetry axis,
+  `ρ_width(z) = base_radius + |z|^p · tan(opening_angle)`, with a transverse
+  Gaussian, a bounded axial power-law and a soft top fade
+- **Emission**: additive and optically thin — the jet never occludes the disk,
+  stars or Einstein rings
+- **Beaming**: a single bulk velocity `v = sign(z)·β·ẑ`; the Doppler factor
+  `δ = 1 / [γ(1 − β·v̂·(emitter→observer))]` brightens the approaching lobe and
+  dims the receding one by `δ^(3+α)`
+- **Tunable**: `β` (bulk velocity) and `α` (spectral index); `β = 0` reproduces
+  the unbeamed jet
 
 ---
 
@@ -186,6 +215,28 @@ Edit `etc/config.json` to adjust parameters:
 
 All parameters can also be adjusted at runtime through the ImGui control panel.
 
+#### Tuned jet preset (opt-in)
+
+The jet ships **disabled**. To enable it, set `relativistic_jet.enabled` to
+`true` in `etc/config.json` (or tick *Relativistic Jet → Enabled* in the panel).
+The shipped values are the tuned preset:
+
+- `base_radius` 3.2 — the jet foot sits inside the disk inner hole (ISCO 6.0)
+- `opening_angle` 7.0° — a narrow, collimated cone
+- `profile_exponent` 1.0 — a straight cone (lower values turn it into a parabola)
+- `max_height` 40.0 — extends well beyond the disk (outer 12.0), soft-faded top
+- `radial_sigma` 0.4, `z_falloff` 10.0, `axial_falloff` 1.5 — core-bright,
+  rim-soft, brightest at the base
+- `bulk_velocity` 0.95, `spectral_index` 0.7 — strong beaming (`δ^3.7`)
+- `emissivity` 1.0
+
+Recommended camera for the beaming asymmetry: **inclination 60–75°**, where the
+approaching lobe is clearly brighter. Reference renders (fixed camera, 512×512):
+[inclined](fig/ticket-0007-inclined.png),
+[edge-on](fig/ticket-0007-edgeon.png),
+[near-axis](fig/ticket-0007-nearaxis.png),
+[jet off](fig/ticket-0007-jetoff.png).
+
 ---
 
 ## Project Structure
@@ -246,8 +297,9 @@ The ImGui panel provides real-time adjustment of:
 
 Changes trigger an immediate re-render via the compute shader.
 
-> The relativistic jet is **opt-in and not yet rendered** (Phase 0 ships the
-> parameter path only); enabling it currently changes no pixels.
+> The relativistic jet is **opt-in and off by default**. Enable it in
+> `etc/config.json` (`relativistic_jet.enabled = true`) or via the panel; see the
+> [tuned jet preset](#tuned-jet-preset-opt-in).
 
 ---
 
