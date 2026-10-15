@@ -232,6 +232,19 @@ void RayTracer::render(const RayTracerParams& params) {
     glUniform1f(glGetUniformLocation(computeProgram_, "u_exposure"), params.exposure);
     glUniform1f(glGetUniformLocation(computeProgram_, "u_gamma"),    params.gamma);
 
+    // Relativistic jet (Phase 0: parameter plumbing + enable gate)
+    glUniform1i(glGetUniformLocation(computeProgram_, "u_jet_enabled"),          params.jet.enabled);
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_jet_base_radius"),      params.jet.base_radius);
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_jet_opening_angle"),    params.jet.opening_angle);
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_jet_profile_exponent"), params.jet.profile_exponent);
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_jet_max_height"),       params.jet.max_height);
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_jet_radial_sigma"),     params.jet.radial_sigma);
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_jet_z_falloff"),        params.jet.z_falloff);
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_jet_axial_falloff"),    params.jet.axial_falloff);
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_jet_bulk_velocity"),    params.jet.bulk_velocity);
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_jet_spectral_index"),   params.jet.spectral_index);
+    glUniform1f(glGetUniformLocation(computeProgram_, "u_jet_emissivity"),       params.jet.emissivity);
+
     // Dispatch: one thread per pixel, work groups of 16×16
     GLuint groupsX = (width_  + 15) / 16;
     GLuint groupsY = (height_ + 15) / 16;

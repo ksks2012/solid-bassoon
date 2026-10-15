@@ -159,6 +159,19 @@ Edit `etc/config.json` to adjust parameters:
         "outer_radius": 12.0,
         "temperature": 1.0
     },
+    "relativistic_jet": {
+        "enabled": false,
+        "base_radius": 3.2,
+        "opening_angle": 7.0,
+        "profile_exponent": 1.0,
+        "max_height": 40.0,
+        "radial_sigma": 0.4,
+        "z_falloff": 10.0,
+        "axial_falloff": 1.5,
+        "bulk_velocity": 0.95,
+        "spectral_index": 0.7,
+        "emissivity": 1.0
+    },
     "rendering": {
         "width": 512,
         "height": 512,
@@ -228,8 +241,13 @@ The ImGui panel provides real-time adjustment of:
 - **Integration**: step size, max steps, abort distance
 - **Einstein Ring**: point source position (θ, φ), angular radius, brightness
 - **Accretion Disk**: enable/disable, inner/outer radius, temperature
+- **Relativistic Jet**: enable/disable (off by default), base radius, opening angle, profile exponent, max height, radial sigma, axial falloffs, bulk velocity, spectral index, emissivity
+- **Display**: exposure, gamma
 
 Changes trigger an immediate re-render via the compute shader.
+
+> The relativistic jet is **opt-in and not yet rendered** (Phase 0 ships the
+> parameter path only); enabling it currently changes no pixels.
 
 ---
 

@@ -54,6 +54,22 @@ uniform int   u_disk_enabled;     // 0 = off, 1 = on
 uniform float u_exposure;         // linear exposure multiplier (default 1.0)
 uniform float u_gamma;            // display gamma (default 1.0 = identity)
 
+// ── Relativistic jet (optically thin, additive) ───────────────────────────────
+// Phase 0 (ticket 0003) ships the parameter path and enable gate only; no
+// geometry is drawn yet.  The whole accumulation is gated on u_jet_enabled so
+// the disabled path costs essentially nothing.
+uniform int   u_jet_enabled;          // 0 = off (default), 1 = on
+uniform float u_jet_base_radius;      // cone foot radius at z = 0
+uniform float u_jet_opening_angle;    // half-opening angle (degrees)
+uniform float u_jet_profile_exponent; // 1 = cone, 0.5 = parabola (reserved)
+uniform float u_jet_max_height;       // axial extent of the jet
+uniform float u_jet_radial_sigma;     // transverse Gaussian width
+uniform float u_jet_z_falloff;        // axial falloff length scale
+uniform float u_jet_axial_falloff;    // axial power-law exponent
+uniform float u_jet_bulk_velocity;    // β (constant)
+uniform float u_jet_spectral_index;   // α in the beaming exponent δ^(3+α)
+uniform float u_jet_emissivity;       // master brightness multiplier
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const float PI = 3.14159265358979323846;
@@ -454,6 +470,17 @@ void main() {
         if (dPhi < -PI) dPhi += 2.0 * PI;
         totalDeltaPhi += abs(dPhi);
         prevPhi = pos.w;
+
+        // ── Relativistic jet accumulation ─────────────────────────────────────
+        // Phase 0 (ticket 0003) ships only the enable gate and uniform
+        // plumbing; the gated block is intentionally empty until the geometry
+        // and emission kernel land (tickets 0004–0006).  Keeping the gate here,
+        // before the disk-crossing test, reserves the insertion point so the
+        // jet is later accumulated as the foreground of whatever the ray ends
+        // on.  The disabled path costs essentially nothing.
+        if (u_jet_enabled == 1) {
+            // jetAccum += accumulateJet(pos, mom, ...);  // ticket 0004
+        }
 
         // ── Disk crossing check ───────────────────────────────────────────────
         // Detect when the ray crosses θ = π/2 between consecutive steps.

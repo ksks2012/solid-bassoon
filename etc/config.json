@@ -15,6 +15,19 @@
         "outer_radius": 12.0,
         "temperature": 1.0
     },
+    "relativistic_jet": {
+        "enabled": false,
+        "base_radius": 3.2,
+        "opening_angle": 7.0,
+        "profile_exponent": 1.0,
+        "max_height": 40.0,
+        "radial_sigma": 0.4,
+        "z_falloff": 10.0,
+        "axial_falloff": 1.5,
+        "bulk_velocity": 0.95,
+        "spectral_index": 0.7,
+        "emissivity": 1.0
+    },
     "rendering": {
         "width": 512,
         "height": 512,

@@ -159,6 +159,24 @@ int main(int argc, char* argv[]) {
     rtParams.disk_temp    = static_cast<float>(config.disk.temperature);
     rtParams.disk_enabled = 1;
 
+    // Relativistic jet from config (off by default)
+    rtParams.jet.enabled          = config.jet.enabled ? 1 : 0;
+    rtParams.jet.base_radius      = static_cast<float>(config.jet.base_radius);
+    rtParams.jet.opening_angle    = static_cast<float>(config.jet.opening_angle);
+    rtParams.jet.profile_exponent = static_cast<float>(config.jet.profile_exponent);
+    rtParams.jet.max_height       = static_cast<float>(config.jet.max_height);
+    rtParams.jet.radial_sigma     = static_cast<float>(config.jet.radial_sigma);
+    rtParams.jet.z_falloff        = static_cast<float>(config.jet.z_falloff);
+    rtParams.jet.axial_falloff    = static_cast<float>(config.jet.axial_falloff);
+    rtParams.jet.bulk_velocity    = static_cast<float>(config.jet.bulk_velocity);
+    rtParams.jet.spectral_index   = static_cast<float>(config.jet.spectral_index);
+    rtParams.jet.emissivity       = static_cast<float>(config.jet.emissivity);
+
+    LOG_INFO("Main", std::string("Relativistic jet: ") +
+             (config.jet.enabled ? "enabled" : "disabled") +
+             "  base_radius=" + std::to_string(config.jet.base_radius) +
+             "  opening_angle=" + std::to_string(config.jet.opening_angle) + " deg");
+
     // ── Main loop ─────────────────────────────────────────────────────────────
     bool needsRender = true;  // only dispatch compute when params change
 
@@ -255,6 +273,34 @@ int main(int argc, char* argv[]) {
                 ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f),
                                    "Inner radius < ISCO (unphysical)");
             }
+        }
+
+        // ── Relativistic Jet ──────────────────────────────────────────────────
+        ImGui::Separator();
+        if (ImGui::CollapsingHeader("Relativistic Jet")) {
+            bool jetOn = (rtParams.jet.enabled != 0);
+            if (ImGui::Checkbox("Enable Jet", &jetOn)) {
+                rtParams.jet.enabled = jetOn ? 1 : 0;
+                changed = true;
+            }
+
+            changed |= ImGui::SliderFloat("Base Radius",      &rtParams.jet.base_radius,      rtParams.rs * 1.5f, 20.0f,  "%.2f");
+            changed |= ImGui::SliderFloat("Opening Angle",    &rtParams.jet.opening_angle,    0.0f,  30.0f,  "%.1f deg");
+            changed |= ImGui::SliderFloat("Profile Exponent", &rtParams.jet.profile_exponent, 0.25f, 2.0f,   "%.2f");
+            changed |= ImGui::SliderFloat("Max Height",       &rtParams.jet.max_height,       5.0f,  100.0f, "%.1f");
+            changed |= ImGui::SliderFloat("Radial Sigma",     &rtParams.jet.radial_sigma,     0.05f, 1.5f,   "%.2f");
+            changed |= ImGui::SliderFloat("Z Falloff",        &rtParams.jet.z_falloff,        1.0f,  50.0f,  "%.1f");
+            changed |= ImGui::SliderFloat("Axial Falloff",    &rtParams.jet.axial_falloff,    0.1f,  5.0f,   "%.2f");
+            changed |= ImGui::SliderFloat("Bulk Velocity",    &rtParams.jet.bulk_velocity,    0.0f,  0.999f, "%.3f");
+            changed |= ImGui::SliderFloat("Spectral Index",   &rtParams.jet.spectral_index,   0.0f,  2.0f,   "%.2f");
+            changed |= ImGui::SliderFloat("Emissivity",       &rtParams.jet.emissivity,       0.0f,  5.0f,   "%.2f");
+
+            // Soft warning: jet foot intrudes into the emitting disk
+            if (rtParams.jet.base_radius >= rtParams.disk_inner) {
+                ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f),
+                                   "Base radius >= disk inner (jet foot intrudes into disk)");
+            }
+            ImGui::TextDisabled("Jet geometry not rendered yet");
         }
 
         // ── Display / tone mapping ────────────────────────────────────────────

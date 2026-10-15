@@ -57,6 +57,22 @@ void Config::parseConfig(const json& j) {
         if (r.contains("gamma"))          render.gamma          = r["gamma"].get<double>();
     }
 
+    // Relativistic jet
+    if (j.contains("relativistic_jet")) {
+        auto& jt = j["relativistic_jet"];
+        if (jt.contains("enabled"))          jet.enabled          = jt["enabled"].get<bool>();
+        if (jt.contains("base_radius"))      jet.base_radius      = jt["base_radius"].get<double>();
+        if (jt.contains("opening_angle"))    jet.opening_angle    = jt["opening_angle"].get<double>();
+        if (jt.contains("profile_exponent")) jet.profile_exponent = jt["profile_exponent"].get<double>();
+        if (jt.contains("max_height"))       jet.max_height       = jt["max_height"].get<double>();
+        if (jt.contains("radial_sigma"))     jet.radial_sigma     = jt["radial_sigma"].get<double>();
+        if (jt.contains("z_falloff"))        jet.z_falloff        = jt["z_falloff"].get<double>();
+        if (jt.contains("axial_falloff"))    jet.axial_falloff    = jt["axial_falloff"].get<double>();
+        if (jt.contains("bulk_velocity"))    jet.bulk_velocity    = jt["bulk_velocity"].get<double>();
+        if (jt.contains("spectral_index"))   jet.spectral_index   = jt["spectral_index"].get<double>();
+        if (jt.contains("emissivity"))       jet.emissivity       = jt["emissivity"].get<double>();
+    }
+
     // Logger
     if (j.contains("logger")) {
         auto& l = j["logger"];

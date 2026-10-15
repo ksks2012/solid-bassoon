@@ -21,6 +21,23 @@
 //   MAX_STEPS            → debug colour (indicates insufficient budget)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Relativistic jet (optically thin, additive) — grouped runtime parameter block.
+// Phase 0 (ticket 0003) ships the parameter path and enable gate only; the jet
+// is off by default and draws nothing until the geometry kernel lands.
+struct JetParams {
+    int   enabled          = 0;      // 0 = off (default), 1 = on
+    float base_radius      = 3.2f;   // cone foot radius at z = 0 (> photon sphere)
+    float opening_angle    = 7.0f;   // half-opening angle (degrees)
+    float profile_exponent = 1.0f;   // 1 = cone, 0.5 = parabola (reserved)
+    float max_height       = 40.0f;  // axial extent of the jet
+    float radial_sigma     = 0.4f;   // transverse Gaussian width
+    float z_falloff        = 10.0f;  // axial falloff length scale
+    float axial_falloff    = 1.5f;   // axial power-law exponent
+    float bulk_velocity    = 0.95f;  // β (constant)
+    float spectral_index   = 0.7f;   // α in the beaming exponent δ^(3+α)
+    float emissivity       = 1.0f;   // master brightness multiplier
+};
+
 struct RayTracerParams {
     // Black hole
     float mass          = 1.0f;
@@ -51,6 +68,9 @@ struct RayTracerParams {
     // Display / tone mapping
     float exposure       = 1.0f;    // linear exposure multiplier
     float gamma          = 1.0f;    // display gamma (1.0 = linear/identity)
+
+    // Relativistic jet (grouped block)
+    JetParams jet;
 };
 
 class RayTracer {
