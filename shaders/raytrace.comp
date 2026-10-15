@@ -74,6 +74,9 @@ uniform float u_jet_emissivity;       // master brightness multiplier
 
 const float PI = 3.14159265358979323846;
 
+// Relativistic jet emission colour: cool blue-white (synchrotron-like).
+const vec3 JET_COLOR = vec3(0.55, 0.72, 1.0);
+
 // ── Geodesic RHS ──────────────────────────────────────────────────────────────
 // State: vec4 pos = (t, r, θ, φ),  vec4 mom = (p_t, p_r, p_θ, p_φ)
 // Returns: dpos/dλ in out_dx,  dmom/dλ in out_dp
@@ -423,6 +426,35 @@ float adaptiveStep(float r, float rs, float h_base) {
     return h_base * scale;
 }
 
+// ── Relativistic jet density ──────────────────────────────────────────────────
+// Axisymmetric solid cone around the symmetry axis.  The emission volume is
+// described in the (z, ρ) plane, with z = r·cosθ along the axis and
+// ρ = r·sinθ the cylindrical radius:
+//
+//   rho_width(z) = base_radius + |z| · tan(opening_angle)     (cone, p = 1)
+//   j(ρ, z)      = exp( -(ρ / rho_width)² / (2·σ²) )           (transverse Gaussian)
+//
+// Phase 1 (ticket 0004) implements only the transverse Gaussian and a hard
+// axial extent of ±max_height; the smooth axial fall-off, soft top and the
+// shape exponent (profile_exponent) arrive in ticket 0005.  The disabled
+// (optically thin) jet is emitted additively, so it never occludes the disk,
+// stars or Einstein rings.
+float jetDensity(vec4 pos) {
+    float r     = pos.y;
+    float theta = pos.z;
+    float z     = r * cos(theta);
+    float rho   = r * sin(theta);
+
+    // Hard axial extent — replaced by a soft top in ticket 0005.
+    if (abs(z) >= u_jet_max_height) return 0.0;
+
+    float opening   = radians(u_jet_opening_angle);
+    float rho_width = u_jet_base_radius + abs(z) * tan(opening);
+    float sigma     = u_jet_radial_sigma;
+
+    return exp(-pow(rho / rho_width, 2.0) / (2.0 * sigma * sigma));
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 void main() {
@@ -454,6 +486,9 @@ void main() {
     vec3  diskAccum = vec3(0.0);       // accumulated disk emission from all crossings
     const float HALF_PI = PI * 0.5;
 
+    // Optically-thin jet emission integrated along the ray (ticket 0004).
+    vec3 jetAccum = vec3(0.0);
+
     for (int i = 0; i < u_max_steps; ++i) {
         float h_eff = adaptiveStep(pos.y, u_rs, u_step_size);
         rk4Step(pos, mom, u_rs, h_eff);
@@ -472,14 +507,22 @@ void main() {
         prevPhi = pos.w;
 
         // ── Relativistic jet accumulation ─────────────────────────────────────
-        // Phase 0 (ticket 0003) ships only the enable gate and uniform
-        // plumbing; the gated block is intentionally empty until the geometry
-        // and emission kernel land (tickets 0004–0006).  Keeping the gate here,
-        // before the disk-crossing test, reserves the insertion point so the
-        // jet is later accumulated as the foreground of whatever the ray ends
-        // on.  The disabled path costs essentially nothing.
+        // Phase 0 (ticket 0003) reserved this insertion point — before the
+        // disk-crossing test — so the jet is accumulated as the foreground of
+        // whatever the ray ends on.  Ticket 0004 fills it in.
+        // Emitted additively and optically thin: the jet never occludes the
+        // disk, stars or Einstein rings.  Sampled once per geodesic step and
+        // integrated over the local proper length ds = h_eff / √f, which makes
+        // the result independent of the base step size.  Accumulated here —
+        // before the disk-crossing test — so a ray that terminates on the disk
+        // carries exactly the foreground jet accumulated up to the hit.
         if (u_jet_enabled == 1) {
-            // jetAccum += accumulateJet(pos, mom, ...);  // ticket 0004
+            float j = jetDensity(pos);
+            if (j > 0.0) {
+                float f  = max(1.0 - u_rs / r, 1e-4);
+                float ds = h_eff / sqrt(f);
+                jetAccum += JET_COLOR * (u_jet_emissivity * j) * ds;
+            }
         }
 
         // ── Disk crossing check ───────────────────────────────────────────────
@@ -606,6 +649,12 @@ void main() {
             color = vec3(1.0, 0.0, 1.0);  // Magenta — genuine convergence failure
         }
     }
+
+    // ── Additive jet compositing ──────────────────────────────────────────────
+    // The optically-thin jet is added on top of every terminal colour (shadow,
+    // disk, sky), so it is visible in front of the shadow and lenses with the
+    // geodesics, without ever occluding what is behind it.
+    color += jetAccum;
 
     // ── Global tone mapping (display transform) ───────────────────────────────
     // Map linear HDR radiance to displayable LDR. With the defaults

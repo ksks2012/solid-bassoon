@@ -300,7 +300,7 @@ int main(int argc, char* argv[]) {
                 ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f),
                                    "Base radius >= disk inner (jet foot intrudes into disk)");
             }
-            ImGui::TextDisabled("Jet geometry not rendered yet");
+            ImGui::TextDisabled("Optically-thin cone (transverse Gaussian); axial fall-off in ticket 0005");
         }
 
         // ── Display / tone mapping ────────────────────────────────────────────
