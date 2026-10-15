@@ -23,6 +23,7 @@ rings and a thin accretion disk.
 | Coordinate chart | Boyer–Lindquist `(t, r, θ, φ)`; no chart switch near the horizon |
 | Integration | RK4 on 8 coupled ODEs (4 coordinates + 4 covariant momenta), fixed base step with adaptive shrink near the horizon |
 | Render path | **GPU**, two-pass: compute shader traces rays into an `RGBA32F` image; fullscreen quad presents it |
+| Display mapping | Global tone mapping at the end of the compute shader: exposure → soft-knee highlight roll-off (identity below the knee) → optional gamma. Defaults (exposure 1.0, gamma 1.0) leave the normal range unchanged. `exposure`/`gamma` are runtime params (config + ImGui) |
 | CPU integrator | `GeodesicIntegrator` runs a fixed 20000-step validation trace at startup only; never on the render path |
 | Camera | Static observer's local orthonormal tetrad, looking radially inward |
 | Background | Procedural multi-layer starfield + Milky Way band + coordinate grid; optional point source for the Einstein ring |
@@ -114,16 +115,11 @@ Layers:
 - **CPU/GPU termination thresholds differ.** CPU uses `r ≤ rs·1.01`
   (`HORIZON_EPSILON`), GPU uses `r ≤ rs·1.05`; adaptive-step floors also differ
   (CPU `0.001` vs GPU `0.01` of the base step).
-- **Disk default is inside the ISCO.** `config.json` sets `inner_radius = 3.0`
-  while ISCO `= 3·rs = 6.0`; the UI flags this as unphysical.
 - **`MAX_STEPS` is repurposed on the GPU.** Rays that exhaust the budget near
   the photon sphere are drawn as photon-ring glow; the rest show debug magenta.
   A future refactor should separate the two meanings: a genuinely exhausted
   step budget (an accuracy warning) versus rays that legitimately wound near
   the photon sphere (real photon-ring light).
-- **No tone mapping or gamma correction.** The compute shader clamps its linear
-  `RGBA32F` output straight to `[0, 1]`, so HDR highlights (e.g. Doppler-boosted
-  disk or photon-ring light) are clipped rather than mapped. Candidate P2 work.
 - **Software rendering works but is slow.** Mesa llvmpipe is detected and
   warned about; compute dispatch has no GPU acceleration there.
 - **No automated tests.**

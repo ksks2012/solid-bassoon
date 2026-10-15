@@ -2,7 +2,7 @@
 
 **Spec:** [../spec/0001-relativistic-jet.md](../spec/0001-relativistic-jet.md)
 
-**What to build:** Two default-behaviour cleanups that every later slice depends on. (1) Every rendered frame passes through a global tone-mapping step (exposure + gamma 2.2) at the end of the compute path, so HDR highlights roll off gracefully; exposure and gamma are live-tunable and their defaults leave the current disk/starfield look essentially unchanged (suggested exposure start ≈ 1.0, tunable roughly 0.1–4.0, i.e. about −1.5 to +2 EV; gamma fixed at 2.2). (2) The shipped disk default inner radius moves to the ISCO (`3·rs`), and the incorrect "ISCO" comment on the old value is corrected (the old value was the photon sphere).
+**What to build:** Two default-behaviour cleanups that every later slice depends on. (1) Every rendered frame passes through a global tone-mapping step (exposure + a soft-knee highlight roll-off, then optional gamma) at the end of the compute path, so HDR highlights roll off gracefully; exposure and gamma are live-tunable and their defaults (exposure = 1.0, gamma = 1.0) leave the current disk/starfield look essentially unchanged. The soft knee is identity below `knee = 0.8` and only compresses true HDR headroom (approaching `knee + width`); exposure is tunable roughly 0.1–4.0 (about −1.5 to +2 EV) and gamma tunable up to 2.2. (2) The shipped disk default inner radius moves to the ISCO (`3·rs`), and the incorrect "ISCO" comment on the old value is corrected (the old value was the photon sphere).
 
 **Blocked by:** None — can start immediately.
 

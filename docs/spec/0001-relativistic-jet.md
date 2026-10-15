@@ -135,9 +135,12 @@ unconditional.
   before any jet geometry.
 - Tone mapping is **global and unconditional**, applied once at the **end of
   the compute shader's `main()`**, after all colour accumulation.
-- The mapping is a simple **exposure + gamma 2.2** (optional mild Reinhard may
-  be added later). `exposure` and `gamma` become runtime parameters with
-  defaults tuned so the existing disk/starfield look is nearly unchanged.
+- The mapping is **exposure + a soft-knee highlight roll-off** (identity below
+  the knee, compressing only true HDR headroom), followed by an optional
+  **display gamma**. `exposure` and `gamma` become runtime parameters; their
+  defaults (`exposure = 1.0`, `gamma = 1.0`) leave the normal range untouched,
+  so the existing disk/starfield look is nearly unchanged while HDR highlights
+  roll off instead of clipping.
 - It ships as its **own commit**, before the jet.
 
 ### Jet geometry
@@ -289,8 +292,9 @@ metric contract.
 
 - **Phase 0 — Params & architecture:** nested param block, config parsing,
   uniform plumbing, `u_jet_enabled` gate (off by default).
-- **Phase 0.5 — Tone mapping:** global exposure + gamma 2.2 at end of `main()`,
-  defaults preserving the current look. **Ships first, as its own commit.**
+- **Phase 0.5 — Tone mapping:** global exposure + soft-knee highlight roll-off
+  (+ optional gamma) at end of `main()`, defaults (exposure 1.0, gamma 1.0)
+  preserving the current look. **Ships first, as its own commit.**
 - **Phase 1 — Simple geometry:** cone solid + transverse Gaussian, no lensing
   subtleties.
 - **Phase 2 — Lensing:** verify the cone integrates correctly through the
