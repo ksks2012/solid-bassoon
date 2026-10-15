@@ -55,9 +55,10 @@ uniform float u_exposure;         // linear exposure multiplier (default 1.0)
 uniform float u_gamma;            // display gamma (default 1.0 = identity)
 
 // ── Relativistic jet (optically thin, additive) ───────────────────────────────
-// Phase 0 (ticket 0003) ships the parameter path and enable gate only; no
-// geometry is drawn yet.  The whole accumulation is gated on u_jet_enabled so
-// the disabled path costs essentially nothing.
+// Bipolar, axisymmetric, emission-only jet.  Geometry and transverse/axial
+// profile arrived in tickets 0004–0005; relativistic Doppler beaming δ^(3+α)
+// in ticket 0006.  The whole accumulation is gated on u_jet_enabled so the
+// disabled path costs essentially nothing.
 uniform int   u_jet_enabled;          // 0 = off (default), 1 = on
 uniform float u_jet_base_radius;      // cone foot radius at z = 0
 uniform float u_jet_opening_angle;    // half-opening angle (degrees)
@@ -483,6 +484,47 @@ float jetDensity(vec4 pos) {
     return gauss * axial;
 }
 
+// ── Relativistic Doppler beaming ──────────────────────────────────────────────
+// A single constant bulk velocity v = sign(z)·β·ẑ makes the lobe moving toward
+// the observer brighter and the receding lobe dimmer (ticket 0006).  The Doppler
+// factor is assembled in the static local frame from the covariant momenta the
+// ray already carries (normalised to p_t = -1, i.e. E = 1):
+//
+//   n̂ = ( f·p_r, √f·p_θ/r, √f·p_φ/(r·sinθ) )   (observer → scene = march dir)
+//   ẑ = cosθ·ê_r − sinθ·ê_θ                     (jet axis, local frame)
+//   δ = 1 / [ γ·(1 − β·(v̂·(−n̂))) ],  γ = 1/√(1−β²)
+//   gain = δ^(3 + α)                            (α = spectral index)
+//
+// Because the ray is traced backwards, the emitter → observer direction is the
+// reverse of the march direction, hence the −n̂ (the classic sign trap).  β = 0
+// returns 1, reproducing the unbeamed jet.  `f` is the caller's metric factor.
+float jetBeamFactor(vec4 pos, vec4 mom, float f) {
+    float beta = clamp(u_jet_bulk_velocity, -0.999, 0.999);
+    if (abs(beta) < 1e-5) return 1.0;              // no bulk motion → unbeamed
+
+    float r     = pos.y;
+    float theta = pos.z;
+    float sinT  = max(sin(theta), 1e-4);
+    float cosT  = cos(theta);
+    float sqrtF = sqrt(f);
+
+    // Local photon direction of the backward march (observer → scene).
+    vec3 n = vec3(f * mom.y,
+                  sqrtF * mom.z / r,
+                  sqrtF * mom.w / (r * sinT));
+
+    // Bipolar bulk direction v̂ = sign(z)·ẑ, with sign(z) = sign(cosθ).
+    float sz   = (cosT >= 0.0) ? 1.0 : -1.0;
+    vec3  vhat = sz * vec3(cosT, -sinT, 0.0);
+
+    // Emitter → observer is the reverse of the backward march, hence −n̂.
+    // Clamp guards against any |n̂| drift so δ^… never sees a negative base.
+    float cosAng = clamp(dot(vhat, -n), -1.0, 1.0);
+    float gamma  = 1.0 / sqrt(1.0 - beta * beta);
+    float delta  = 1.0 / (gamma * (1.0 - beta * cosAng));
+    return pow(delta, 3.0 + u_jet_spectral_index);
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 void main() {
@@ -535,9 +577,6 @@ void main() {
         prevPhi = pos.w;
 
         // ── Relativistic jet accumulation ─────────────────────────────────────
-        // Phase 0 (ticket 0003) reserved this insertion point — before the
-        // disk-crossing test — so the jet is accumulated as the foreground of
-        // whatever the ray ends on.  Ticket 0004 fills it in.
         // Emitted additively and optically thin: the jet never occludes the
         // disk, stars or Einstein rings.  Sampled once per geodesic step and
         // integrated over the local proper length ds = h_eff / √f, which makes
@@ -549,7 +588,8 @@ void main() {
             if (j > 0.0) {
                 float f  = max(1.0 - u_rs / r, 1e-4);
                 float ds = h_eff / sqrt(f);
-                jetAccum += JET_COLOR * (u_jet_emissivity * j) * ds;
+                // Relativistic beaming multiplies the emission rate (ticket 0006).
+                jetAccum += JET_COLOR * (u_jet_emissivity * j * jetBeamFactor(pos, mom, f)) * ds;
             }
         }
 

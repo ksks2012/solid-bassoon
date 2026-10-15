@@ -22,13 +22,12 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Relativistic jet (optically thin, additive) — grouped runtime parameter block.
-// Phase 0 (ticket 0003) ships the parameter path and enable gate only; the jet
-// is off by default and draws nothing until the geometry kernel lands.
+// Bipolar, axisymmetric, emission-only jet with Doppler beaming; off by default.
 struct JetParams {
     int   enabled          = 0;      // 0 = off (default), 1 = on
     float base_radius      = 3.2f;   // cone foot radius at z = 0 (> photon sphere)
     float opening_angle    = 7.0f;   // half-opening angle (degrees)
-    float profile_exponent = 1.0f;   // 1 = cone, 0.5 = parabola (reserved)
+    float profile_exponent = 1.0f;   // 1 = cone, 0.5 = parabola
     float max_height       = 40.0f;  // axial extent of the jet
     float radial_sigma     = 0.4f;   // transverse Gaussian width
     float z_falloff        = 10.0f;  // axial falloff length scale

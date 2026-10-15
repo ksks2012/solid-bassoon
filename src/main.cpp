@@ -291,7 +291,7 @@ int main(int argc, char* argv[]) {
             changed |= ImGui::SliderFloat("Radial Sigma",     &rtParams.jet.radial_sigma,     0.05f, 1.5f,   "%.2f");
             changed |= ImGui::SliderFloat("Z Falloff",        &rtParams.jet.z_falloff,        1.0f,  50.0f,  "%.1f");
             changed |= ImGui::SliderFloat("Axial Falloff",    &rtParams.jet.axial_falloff,    0.1f,  5.0f,   "%.2f");
-            changed |= ImGui::SliderFloat("Bulk Velocity",    &rtParams.jet.bulk_velocity,    0.0f,  0.999f, "%.3f");
+            changed |= ImGui::SliderFloat("Bulk Velocity",    &rtParams.jet.bulk_velocity,    -0.999f, 0.999f, "%.3f");
             changed |= ImGui::SliderFloat("Spectral Index",   &rtParams.jet.spectral_index,   0.0f,  2.0f,   "%.2f");
             changed |= ImGui::SliderFloat("Emissivity",       &rtParams.jet.emissivity,       0.0f,  5.0f,   "%.2f");
 
@@ -300,7 +300,7 @@ int main(int argc, char* argv[]) {
                 ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f),
                                    "Base radius >= disk inner (jet foot intrudes into disk)");
             }
-            ImGui::TextDisabled("Optically-thin cone: transverse Gaussian + axial fall-off; beaming in ticket 0006");
+            ImGui::TextDisabled("Optically-thin cone: transverse Gaussian + axial fall-off + Doppler beaming");
         }
 
         // ── Display / tone mapping ────────────────────────────────────────────

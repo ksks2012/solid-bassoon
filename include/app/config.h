@@ -51,7 +51,7 @@ struct JetConfig {
     bool   enabled          = false;  // opt-in
     double base_radius      = 3.2;    // cone foot radius at z = 0 (> photon sphere)
     double opening_angle    = 7.0;    // half-opening angle (degrees)
-    double profile_exponent = 1.0;    // 1 = cone, 0.5 = parabola (reserved)
+    double profile_exponent = 1.0;    // 1 = cone, 0.5 = parabola
     double max_height       = 40.0;   // axial extent of the jet
     double radial_sigma     = 0.4;    // transverse Gaussian width
     double z_falloff        = 10.0;   // axial falloff length scale
