@@ -2,7 +2,7 @@
 
 - **Date**: 2026-10-15
 - **Spec/ADR Path**: `docs/spec/0001-relativistic-jet.md`
-- **Ticket Path**: `docs/ticket/0005-emission-profile-refinement.md`
+- **Ticket Path**: `docs/archive/tickets/0005-emission-profile-refinement.md`
 - **Branch**: `main`
 
 ---

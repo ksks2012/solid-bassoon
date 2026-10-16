@@ -3,7 +3,7 @@
 - **Status:** Accepted · `ready-for-agent`
 - **Date:** 2026-10-14
 - **Scope:** P2.1 — emission-only relativistic jet + display pipeline prerequisite
-- **References:** [../CONTEXT.md](../CONTEXT.md), [../DEFINITION.md](../DEFINITION.md), [../DOCUMENTATION-LIFECYCLE.md](../DOCUMENTATION-LIFECYCLE.md)
+- **References:** [../CONTEXT.md](../CONTEXT.md), [../DEFINITION.md](../DEFINITION.md), [../DOCUMENTATION-LIFECYCLE.md](../DOCUMENTATION-LIFECYCLE.md) · ADRs: [0001](../adr/0001-global-tone-mapping.md), [0002](../adr/0002-disk-inner-radius-at-isco.md), [0003](../adr/0003-emission-only-jet.md), [0004](../adr/0004-jet-constant-bulk-velocity-beaming.md)
 
 ---
 
@@ -320,7 +320,7 @@ photon sphere, ISCO, accretion disk, terminal colour, tone mapping, etc.
 
 ## Acceptance Record (P2.1)
 
-Recorded by ticket [0007](../ticket/0007-acceptance-and-polish.md). All shots are
+Recorded by ticket [0007](../archive/tickets/0007-acceptance-and-polish.md). All shots are
 fixed-camera renders at 512×512, `max_steps = 5000`, on an RTX 4070 via D3D12
 (`GALLIUM_DRIVER=d3d12`). The seam is the existing render output of
 `RayTracer::render(RayTracerParams)`; no new seam or automated harness was added.

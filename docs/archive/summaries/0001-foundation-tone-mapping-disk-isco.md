@@ -2,7 +2,7 @@
 
 - **Date**: 2026-10-15
 - **Spec/ADR Path**: `docs/spec/0001-relativistic-jet.md`
-- **Ticket Path**: `docs/ticket/0001-foundation-tone-mapping-disk-isco.md`
+- **Ticket Path**: `docs/archive/tickets/0001-foundation-tone-mapping-disk-isco.md`
 - **Branch**: `main`
 
 ---
@@ -15,7 +15,7 @@
 - **Global tone mapping (Phase 0.5)**: added a display transform at the end of `raytrace.comp` `main()` — `exposure` → soft-knee highlight roll-off → optional gamma. Defaults (`exposure = 1.0`, `gamma = 1.0`) are identity in the normal range, so the existing disk/starfield look is preserved while true HDR (photon-ring glow, point source) rolls off instead of clipping. The earlier premature clamps in `skyColor`, the disk-termination branch, and the escaped branch were removed so HDR survives to the map.
 - **Runtime tone-map params**: `exposure`/`gamma` plumbed through `RenderParams`, `etc/config.json`, `RayTracerParams`, the compute uniforms, and new ImGui "Display (Tone Mapping)" sliders.
 - **Disk ISCO fix**: shipped default `inner_radius` moved `3.0 → 6.0` (`ISCO = 3·rs`) in `config.h` and `config.json`; the misleading "ISCO for Schwarzschild" comment on the old value was corrected.
-- **Docs synced**: `docs/CONTEXT.md` display-mapping row + removal of the two now-resolved gap bullets; `docs/spec/0001` and `docs/ticket/0001` updated from "+gamma 2.2" to the soft-knee + gamma-1.0 formulation.
+- **Docs synced**: `docs/CONTEXT.md` display-mapping row + removal of the two now-resolved gap bullets; `docs/spec/0001` and `docs/archive/tickets/0001` updated from "+gamma 2.2" to the soft-knee + gamma-1.0 formulation.
 
 ## 🧪 Verification
 - **Typecheck**: 🟢 Pass — `cmake --build build -j` → `[100%] Built target BlackholeRenderer`

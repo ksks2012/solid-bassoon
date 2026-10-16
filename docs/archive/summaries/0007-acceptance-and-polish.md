@@ -2,7 +2,7 @@
 
 - **Date**: 2026-10-16
 - **Spec/ADR Path**: `docs/spec/0001-relativistic-jet.md`
-- **Ticket Path**: `docs/ticket/0007-acceptance-and-polish.md`
+- **Ticket Path**: `docs/archive/tickets/0007-acceptance-and-polish.md`
 - **Branch**: `main`
 
 ---
