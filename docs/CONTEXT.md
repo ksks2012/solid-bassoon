@@ -149,8 +149,10 @@ Layers:
   faithful to the spec formula (see
   [adr/0004](./adr/0004-jet-constant-bulk-velocity-beaming.md)).
 - **No automated tests.** A testing & performance standard is defined
-  ([standards/testing-and-performance.md](./standards/testing-and-performance.md));
-  automation has not landed yet.
+  ([standards/testing-and-performance.md](./standards/testing-and-performance.md)),
+  with an in-progress harness spec
+  ([spec/0002](./spec/0002-testing-and-performance-harness.md)); automation has
+  not landed yet.
 
 ## 7. Directory Layout
 
@@ -190,5 +192,6 @@ spec, a spec references ADRs, and ADRs are superseded rather than rewritten.
 | [0002](./adr/0002-disk-inner-radius-at-isco.md) | Ship the disk inner radius at the ISCO | Accepted |
 | [0003](./adr/0003-emission-only-jet.md) | Emission-only, optically-thin relativistic jet | Accepted |
 | [0004](./adr/0004-jet-constant-bulk-velocity-beaming.md) | Model jet beaming with a constant bulk velocity | Accepted |
+| [0005](./adr/0005-extract-blackhole-core.md) | Extract a GL-free `blackhole_core` library for testability | Accepted |
 
 Superseded ADRs are kept for history; only Accepted ADRs are reflected above.
