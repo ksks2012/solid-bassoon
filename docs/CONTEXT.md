@@ -12,7 +12,8 @@ A real-time renderer of a non-rotating (Schwarzschild) black hole. Each screen
 pixel casts one light ray **backwards** from a static observer's camera through
 curved spacetime, integrating the null geodesic equations in Hamiltonian form.
 The result reproduces gravitational lensing, a photon-sphere shadow, Einstein
-rings and a thin accretion disk.
+rings, a thin accretion disk, and an opt-in relativistic jet with Doppler
+beaming.
 
 ## 2. Current State (codebase facts)
 
@@ -27,7 +28,8 @@ rings and a thin accretion disk.
 | CPU integrator | `GeodesicIntegrator` runs a fixed 20000-step validation trace at startup only; never on the render path |
 | Camera | Static observer's local orthonormal tetrad, looking radially inward |
 | Background | Procedural multi-layer starfield + Milky Way band + coordinate grid; optional point source for the Einstein ring |
-| Accretion disk | Equatorial plane only, geometrically thin, optically thick; the first equatorial crossing is opaque and terminates the ray |
+| Accretion disk | Equatorial plane only, geometrically thin, optically thick; the first equatorial crossing is opaque and terminates the ray. Default inner edge at the ISCO (`3·rs = 6M`); outer `12M` |
+| Relativistic jet | Opt-in (off by default). Bipolar, axisymmetric, **emission-only** (optically thin, additive) solid cone with a transverse Gaussian profile, bounded axial power-law and soft top fade. Doppler beaming from a single constant bulk velocity `β` (`δ^(3+α)`). All parameters live in `config.json` + ImGui |
 | UI | ImGui control panel mutates runtime params and triggers a re-render; changes are **not** written back to `config.json` |
 | Config | `etc/config.json` loaded once at startup; missing keys fall back to struct defaults |
 | Logging | `ILogger` interface + spdlog backend, reached through the `GlobalLogger` singleton and `LOG_*` macros |
@@ -44,8 +46,9 @@ main.cpp
 ├─ cpuValidation()   CPU GeodesicIntegrator — startup sanity trace only
 ├─ RayTracer
 │    Pass 1  raytrace.comp   compute, 16x16 groups, one thread per pixel
-│              geodesicRHS -> rk4Step -> termination / disk-hit decision
-│              writes RGBA32F output image
+│              loop: rk4Step -> accumulateJet -> disk-hit test -> termination
+│              terminal colour (captured/disk/sky) + jetAccum
+│              tone map (exposure + soft-knee + gamma) -> writes RGBA32F image
 │    Pass 2  fullscreen.vert + render.frag   sample the image to the screen
 └─ ImGui overlay
 ```
@@ -58,8 +61,10 @@ Layers:
   termination, `TraceResult`.
 - **rendering** — `RayTracer` (`ray_tracer.h/.cpp`): owns the compute program,
   the `RGBA32F` texture and the fullscreen quad. `RayTracerParams` is the
-  single runtime parameter block passed to the GPU. `accretion_disk.h`
-  documents the disk model and holds its default constants.
+  single runtime parameter block passed to the GPU (black hole, camera,
+  integration, disk, point source, **jet**, display). `accretion_disk.h`
+  documents the disk model and holds its default constants; the jet parameter
+  block is `JetParams`.
 - **app** — `Config` (`config.h/.cpp`) parses JSON; `Window`
   (`window.h/.cpp`) wraps GLFW/GLEW and logs GL/compute limits.
 - **logging** — `logger.h` defines `ILogger`/`GlobalLogger`; `spdlog_logger.*`
@@ -86,6 +91,14 @@ Layers:
    `δ³` built from a non-relativistic Keplerian line-of-sight velocity — an
    approximation, not a full relativistic radiative-transfer treatment. The
    two effects are combined multiplicatively and clamped to `[0, 5]`.
+7. **The jet is emission-only and optically thin.** Per geodesic step it adds
+   `j · ds` with the local proper length `ds = h_eff / √f`; the total is added
+   onto every terminal colour. It never absorbs or occludes background light
+   (see [adr/0003](./adr/0003-emission-only-jet.md)).
+8. **Jet beaming is a single constant bulk velocity.** `v = sign(z)·β·ẑ`, with
+   gain `δ^(3+α)` from the static-local-frame Doppler factor; `β = 0` is
+   unbeamed. The emitter → observer direction is the reverse of the backward
+   march (`−n̂`) — the sign trap (see [adr/0004](./adr/0004-jet-constant-bulk-velocity-beaming.md)).
 
 ## 5. Contracts & conventions
 
@@ -105,6 +118,10 @@ Layers:
    interpolation between neighbouring ray results.
 7. `config.json` is startup-only; all live tuning happens through
    `RayTracerParams` and the ImGui panel.
+8. **Emission physics is GLSL-only.** The disk Doppler model and the jet
+   density/beaming kernel live only in `raytrace.comp` — they are *not* part of
+   the mirrored metric implementation (§5.1), which is scoped to the geodesic
+   RHS, adaptive step and camera tetrad.
 
 ## 6. Known Gaps & Caveats
 
@@ -122,6 +139,15 @@ Layers:
   the photon sphere (real photon-ring light).
 - **Software rendering works but is slow.** Mesa llvmpipe is detected and
   warned about; compute dispatch has no GPU acceleration there.
+- **The jet is emission-only.** No self-absorption, optical depth, or
+  absorption of background light; a full radiative-transfer treatment is
+  deferred (see [adr/0003](./adr/0003-emission-only-jet.md)).
+- **Jet beaming uses a constant `β` and a simplified `n̂`.** The bulk velocity
+  does not accelerate with `z`, and the camera's momentum convention makes the
+  spec's `n̂` evaluate to `f·`(unit direction) rather than a unit vector,
+  slightly under-scaling beaming near the jet base. The implementation is
+  faithful to the spec formula (see
+  [adr/0004](./adr/0004-jet-constant-bulk-velocity-beaming.md)).
 - **No automated tests.**
 
 ## 7. Directory Layout
@@ -129,11 +155,37 @@ Layers:
 ```
 solid-bassoon/
 ├── CMakeLists.txt
+├── .context/                # active session state (gitignored)
 ├── etc/config.json          # startup configuration
 ├── shaders/                 # raytrace.comp, fullscreen.vert, render.frag
 ├── include/{core,rendering,app,logging}/
 ├── src/{core,rendering,app,logging}/ + main.cpp
 ├── lib/                     # vendored imgui / nlohmann / spdlog (gitignored)
-├── fig/                     # screenshots referenced by the README
-└── docs/                    # CONTEXT.md, DEFINITION.md, adr/, ticket/
+├── fig/                     # screenshots + acceptance golden images
+└── docs/
+    ├── CONTEXT.md           # single source of truth (this file)
+    ├── DEFINITION.md        # domain glossary
+    ├── DOCUMENTATION-LIFECYCLE.md
+    ├── CHANGELOG.md         # milestone / version history
+    ├── adr/                 # architecture decision records (never deleted)
+    ├── spec/                # feature specs (intent); not archived
+    ├── ticket/              # active tracer-bullet work units
+    └── archive/
+        ├── tickets/         # completed tickets
+        └── summaries/       # completed execution summaries
 ```
+
+Document kinds and their lifecycles are defined in
+[DOCUMENTATION-LIFECYCLE.md](./DOCUMENTATION-LIFECYCLE.md): tickets decompose a
+spec, a spec references ADRs, and ADRs are superseded rather than rewritten.
+
+## 8. Accepted Decisions (ADRs)
+
+| ADR | Decision | Status |
+|-----|----------|--------|
+| [0001](./adr/0001-global-tone-mapping.md) | Global tone mapping with a soft-knee highlight roll-off | Accepted |
+| [0002](./adr/0002-disk-inner-radius-at-isco.md) | Ship the disk inner radius at the ISCO | Accepted |
+| [0003](./adr/0003-emission-only-jet.md) | Emission-only, optically-thin relativistic jet | Accepted |
+| [0004](./adr/0004-jet-constant-bulk-velocity-beaming.md) | Model jet beaming with a constant bulk velocity | Accepted |
+
+Superseded ADRs are kept for history; only Accepted ADRs are reflected above.

@@ -1,5 +1,8 @@
 .vscode
 
+# Active session state (documentation lifecycle)
+.context/
+
 **/var/**
 **/cmd/**
 **/dataset/**

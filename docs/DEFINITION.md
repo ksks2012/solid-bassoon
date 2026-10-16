@@ -2,9 +2,10 @@
 
 A real-time renderer of a non-rotating (Schwarzschild) black hole: a static
 observer's camera traces light rays backwards through curved spacetime to
-produce gravitational lensing, a photon-sphere shadow, Einstein rings and a
-thin accretion disk. This document is the single domain glossary; architecture
-and decisions live in [CONTEXT.md](./CONTEXT.md) and [adr](./adr/).
+produce gravitational lensing, a photon-sphere shadow, Einstein rings, a thin
+accretion disk and an opt-in relativistic jet. This document is the single
+domain glossary; architecture and decisions live in [CONTEXT.md](./CONTEXT.md)
+and [adr](./adr/).
 
 ## Spacetime & Geometry
 
@@ -185,14 +186,104 @@ The fixed temperature-to-colour mapping: blue-white near the inner edge through
 orange-red at the outer edge.
 _Avoid_: colour map, gradient
 
+## Relativistic Jet
+
+**relativistic jet**:
+An opt-in, axisymmetric, emission-only bipolar outflow along the spin axis,
+rendered as a solid cone in `(z, ρ)`. Off by default; enabled via config or the
+panel.
+_Avoid_: beam (qualify as *jet*), plume, outflow (the physical phenomenon is a
+jet)
+
+**optically-thin jet**:
+The jet is emission-only and additive: per step it adds emission, never absorbs,
+so it never occludes the disk, stars or Einstein rings. "Optically thin" here
+means *emission-only*, not a scattering model.
+_Avoid_: transparent, translucent
+
+**jet density (j)**:
+The per-step emission kernel: a transverse Gaussian `exp(-(ρ/ρ_width)²/(2σ²))`
+times a bounded axial power-law `(1+|z|/z_falloff)^(-axial_falloff)` times a soft
+top fade to zero near `max_height`.
+_Avoid_: brightness, intensity
+
+**base radius**:
+The jet's transverse half-width at `z = 0` (`ρ_width(0)`). Must stay outside the
+photon sphere (`≥ 1.5·rs`) and inside the disk inner edge so the foot sits in the
+dark inner hole.
+_Avoid_: inner radius (that is the disk's), foot radius
+
+**opening angle**:
+The half-angle of the cone; the width grows as
+`ρ_width(z) = base_radius + |z|^p · tan(opening_angle)`.
+_Avoid_: cone angle, divergence
+
+**profile exponent (p)**:
+The reserved exponent shaping the cone: `p = 1` is a straight cone, lower values
+bend it toward a parabola.
+_Avoid_: falloff (that is the axial term), slope
+
+**radial sigma (σ)**:
+The transverse Gaussian's width scale; larger values give a fatter, softer jet.
+_Avoid_: thickness (qualify as *transverse*), spread
+
+**max height**:
+The axial half-extent of the jet. Emission fades smoothly to zero between
+`0.8·max_height` and `max_height` (no hard cut-off).
+_Avoid_: length, top
+
+**bulk velocity (β)**:
+The single constant speed (in units of `c`) of the jet material along the axis,
+with direction `sign(z)·ẑ`. Drives the beaming asymmetry; `β = 0` is unbeamed.
+_Avoid_: speed, velocity (qualify as *bulk*)
+
+**spectral index (α)**:
+The exponent controlling the beaming contrast: the emission is scaled by
+`δ^(3+α)`, mimicking synchrotron-like emission.
+_Avoid_: gamma (that is the Lorentz factor), power-law index
+
+**Doppler factor (δ)**:
+`δ = 1/[γ(1 − β·v̂·(emitter→observer))]`, `γ = 1/√(1−β²)`. The jet's beaming
+gain. Because rays are traced backwards, the emitter→observer direction is the
+reverse of the march direction (the `−n̂` sign trap).
+_Avoid_: redshift (that is the disk's gravitational term)
+
+**beaming factor**:
+The per-step gain applied to jet emission: `δ^(3+α)`. Composes multiplicatively
+with the jet density `j`; no double counting.
+_Avoid_: Doppler shift, boost (qualify as *beaming*)
+
 ## Rendering Pipeline
 
 **RayTracerParams**:
 The single runtime parameter block (black hole, camera, integration, point
-source and disk settings) passed from the app to the GPU.
+source, disk, jet and display settings) passed from the app to the GPU.
 _Avoid_: uniforms (the GLSL names, not the domain concept)
 
 **two-pass pipeline**:
 A **compute shader** (`raytrace.comp`) traces one ray per pixel into an image;
 a **fullscreen quad** then samples that image onto the window.
 _Avoid_: kernel, blit, present pass
+
+## Display
+
+**tone mapping**:
+The global display transform at the end of the compute shader: exposure →
+soft-knee highlight roll-off → optional gamma. Applied once to every pixel.
+_Avoid_: colour grading, post-processing
+
+**exposure**:
+A linear scale applied to the accumulated radiance before the knee; the default
+`1.0` leaves the normal range untouched.
+_Avoid_: brightness, gain
+
+**soft knee**:
+The highlight roll-off: the mapping is the identity below `knee = 0.8` and only
+compresses true HDR headroom in `[knee, knee + width]`, approaching
+`knee + width` without reaching it. Replaces the old hard clamp.
+_Avoid_: smoothstep, curve (qualify as *soft-knee*)
+
+**gamma**:
+Optional display-encoding exponent applied after the knee; the default `1.0` is
+the identity.
+_Avoid_: brightness, contrast
