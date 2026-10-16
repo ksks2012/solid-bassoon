@@ -35,7 +35,7 @@ beaming.
 | Logging | `ILogger` interface + spdlog backend, reached through the `GlobalLogger` singleton and `LOG_*` macros |
 | Build | CMake ≥ 3.10, C++17, OpenGL 4.3 Core; GLEW loader; ccache |
 | Third-party | Vendored under `lib/` (imgui, nlohmann/json, spdlog) — see caveats |
-| Tests | None automated; the startup CPU trace is the only correctness check |
+| Tests | None automated; the startup CPU trace is the only correctness check. Standard defined, automation pending |
 
 ## 3. Architecture
 
@@ -148,7 +148,9 @@ Layers:
   slightly under-scaling beaming near the jet base. The implementation is
   faithful to the spec formula (see
   [adr/0004](./adr/0004-jet-constant-bulk-velocity-beaming.md)).
-- **No automated tests.**
+- **No automated tests.** A testing & performance standard is defined
+  ([standards/testing-and-performance.md](./standards/testing-and-performance.md));
+  automation has not landed yet.
 
 ## 7. Directory Layout
 
@@ -170,6 +172,7 @@ solid-bassoon/
     ├── adr/                 # architecture decision records (never deleted)
     ├── spec/                # feature specs (intent); not archived
     ├── ticket/              # active tracer-bullet work units
+    ├── standards/           # development & technical standards
     └── archive/
         ├── tickets/         # completed tickets
         └── summaries/       # completed execution summaries
