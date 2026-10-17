@@ -35,7 +35,7 @@ beaming.
 | Logging | `ILogger` interface + spdlog backend, reached through the `GlobalLogger` singleton and `LOG_*` macros |
 | Build | CMake ≥ 3.10, C++17, OpenGL 4.3 Core; GLEW loader; ccache |
 | Third-party | Vendored under `lib/` (imgui, nlohmann/json, spdlog) — see caveats |
-| Tests | None automated; the startup CPU trace is the only correctness check. Standard defined, automation pending |
+| Tests | A CTest skeleton exists (`tests/`, ticket 0008); the startup CPU trace is still the only real correctness check. Coverage pending |
 
 ## 3. Architecture
 
@@ -71,6 +71,14 @@ Layers:
   is the backend.
 - **shaders** — `raytrace.comp` (all shipping physics), `fullscreen.vert`,
   `render.frag`.
+
+Build targets (see [adr/0005](./adr/0005-extract-blackhole-core.md)):
+
+- **`blackhole_core`** — a **GL-free static library**: `core` + `app/config` +
+  `logging`. Must not include or link GL/GLFW/ImGui. Test targets link this
+  library **only**.
+- **`BlackholeRenderer`** — the executable: `main`, `app/window`, `rendering`,
+  vendored ImGui; links `blackhole_core` plus OpenGL/GLFW/GLEW.
 
 ## 4. Physics & sign conventions (non-negotiable)
 
@@ -148,11 +156,13 @@ Layers:
   slightly under-scaling beaming near the jet base. The implementation is
   faithful to the spec formula (see
   [adr/0004](./adr/0004-jet-constant-bulk-velocity-beaming.md)).
-- **No automated tests.** A testing & performance standard is defined
+- **Testing is only a skeleton so far.** A testing & performance standard is
+  defined
   ([standards/testing-and-performance.md](./standards/testing-and-performance.md)),
   with an in-progress harness spec
-  ([spec/0002](./spec/0002-testing-and-performance-harness.md)); automation has
-  not landed yet.
+  ([spec/0002](./spec/0002-testing-and-performance-harness.md)). Ticket 0008
+  landed the `blackhole_core` split and a CTest harness, but there is not yet
+  meaningful coverage; the startup CPU trace remains the only real check.
 
 ## 7. Directory Layout
 
@@ -164,6 +174,7 @@ solid-bassoon/
 ├── shaders/                 # raytrace.comp, fullscreen.vert, render.frag
 ├── include/{core,rendering,app,logging}/
 ├── src/{core,rendering,app,logging}/ + main.cpp
+├── tests/                   # CTest suite; links blackhole_core only
 ├── lib/                     # vendored imgui / nlohmann / spdlog (gitignored)
 ├── fig/                     # screenshots + acceptance golden images
 └── docs/

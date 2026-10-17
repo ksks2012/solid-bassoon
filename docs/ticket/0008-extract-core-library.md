@@ -6,12 +6,13 @@
 
 **Blocked by:** —
 
-**Status:** Todo
+**Status:** Done
+**Completed:** 2026-10-16
 
-- [ ] `CMakeLists.txt` builds `blackhole_core`, `BlackholeRenderer`, and a `tests` target that links `blackhole_core` only.
-- [ ] `src/core/*`, `src/app/config.cpp`, `src/logging/*` compile without GL/GLFW/ImGui includes or flags.
-- [ ] `ctest` runs at least one trivial passing test.
-- [ ] The application still builds and renders identically (no behaviour change).
-- [ ] CONTEXT §3 and §7 describe the library target; [adr/0005](../adr/0005-extract-blackhole-core.md) recorded.
+- [x] `CMakeLists.txt` builds `blackhole_core`, `BlackholeRenderer`, and a `tests` target that links `blackhole_core` only.
+- [x] `src/core/*`, `src/app/config.cpp`, `src/logging/*` compile without GL/GLFW/ImGui includes or flags.
+- [x] `ctest` runs at least one trivial passing test.
+- [x] The application still builds and renders identically (no behaviour change).
+- [x] CONTEXT §3 and §7 describe the library target; [adr/0005](../adr/0005-extract-blackhole-core.md) recorded.
 
 **See:** [../standards/testing-and-performance.md](../standards/testing-and-performance.md) · [../adr/0005-extract-blackhole-core.md](../adr/0005-extract-blackhole-core.md)
