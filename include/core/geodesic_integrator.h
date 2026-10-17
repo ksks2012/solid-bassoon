@@ -52,14 +52,16 @@ public:
     void setMaxSteps(int n)           { nmax_ = n; }
     void setAbortDistance(double d)    { rmax_ = d; }
 
+    // Effective step size scaled by proximity to the horizon (see
+    // geodesic_integrator.cpp). Public so unit tests can verify the
+    // monotonicity, floor and cap without tracing a full ray.
+    double adaptiveStep(double r) const;
+
 private:
     const SchwarzschildMetric& metric_;
     double h_;       // base affine-parameter step size (Δλ)
     int    nmax_;    // maximum number of integration steps
     double rmax_;    // abort distance (escape threshold)
-
-    // Compute effective step size scaled by proximity to horizon
-    double adaptiveStep(double r) const;
 
     // One RK4 step: advance state by Δλ = h
     SchwarzschildMetric::State rk4Step(const SchwarzschildMetric::State& s,

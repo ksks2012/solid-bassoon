@@ -35,7 +35,7 @@ beaming.
 | Logging | `ILogger` interface + spdlog backend, reached through the `GlobalLogger` singleton and `LOG_*` macros |
 | Build | CMake ≥ 3.10, C++17, OpenGL 4.3 Core; GLEW loader; ccache |
 | Third-party | Vendored under `lib/` (imgui, nlohmann/json, spdlog) — see caveats |
-| Tests | A CTest skeleton exists (`tests/`, ticket 0008); the startup CPU trace is still the only real correctness check. Coverage pending |
+| Tests | CPU unit tests for metric / integrator / config (`tests/`, tickets 0008–0009) run under CTest with no GL context. GPU correctness (golden regression, emission kernels) and performance are not yet automated |
 
 ## 3. Architecture
 
@@ -156,13 +156,14 @@ Build targets (see [adr/0005](./adr/0005-extract-blackhole-core.md)):
   slightly under-scaling beaming near the jet base. The implementation is
   faithful to the spec formula (see
   [adr/0004](./adr/0004-jet-constant-bulk-velocity-beaming.md)).
-- **Testing is only a skeleton so far.** A testing & performance standard is
+- **Testing covers the CPU core only.** A testing & performance standard is
   defined
   ([standards/testing-and-performance.md](./standards/testing-and-performance.md)),
   with an in-progress harness spec
-  ([spec/0002](./spec/0002-testing-and-performance-harness.md)). Ticket 0008
-  landed the `blackhole_core` split and a CTest harness, but there is not yet
-  meaningful coverage; the startup CPU trace remains the only real check.
+  ([spec/0002](./spec/0002-testing-and-performance-harness.md)). Tickets 0008
+  and 0009 landed the `blackhole_core` split and CPU unit tests for the metric,
+  integrator and config. Nothing automates the **GPU** path yet — golden
+  regression, the emission kernels and performance are still verified by eye.
 
 ## 7. Directory Layout
 

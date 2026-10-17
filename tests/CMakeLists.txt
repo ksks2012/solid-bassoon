@@ -8,4 +8,7 @@ function(add_core_test name source)
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
 
-add_core_test(test_smoke unit/smoke_test.cpp)
+add_core_test(test_smoke      unit/smoke_test.cpp)
+add_core_test(test_metric     unit/metric_test.cpp)
+add_core_test(test_integrator unit/integrator_test.cpp)
+add_core_test(test_config     unit/config_test.cpp)
