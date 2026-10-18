@@ -3,6 +3,7 @@
 
 #include <GL/glew.h>
 #include <string>
+#include <vector>
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GPU Ray Tracer
@@ -91,6 +92,13 @@ public:
     // Re-draw the last computed result without re-dispatching compute.
     // Use this when parameters have not changed to avoid expensive re-trace.
     void drawLastFrame();
+
+    // Read the post-tone-map `RGBA32F` compute output texture back to CPU
+    // memory (the observation seam for automation). `out` is resized to
+    // width·height·4 floats, row-major bottom-to-top in OpenGL texture order.
+    // Returns false if the tracer has not been initialised or the GL read
+    // reported an error.
+    bool readback(std::vector<float>& out) const;
 
     // Resize the output texture (e.g. on window resize).
     void resize(int width, int height);

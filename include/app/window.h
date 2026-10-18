@@ -8,7 +8,7 @@
 // GLFW window wrapper with OpenGL 4.3+ context (Compute Shader capable)
 class Window {
 public:
-    Window(const std::string& title, int width, int height);
+    Window(const std::string& title, int width, int height, bool visible = true);
     ~Window();
 
     // Non-copyable

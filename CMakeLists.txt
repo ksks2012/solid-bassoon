@@ -52,6 +52,8 @@ set_source_files_properties(${IMGUI_SOURCES}
 add_executable(${PROJECT_NAME}
     src/main.cpp
     src/app/window.cpp
+    src/app/render_params.cpp
+    src/app/headless.cpp
     src/rendering/ray_tracer.cpp
     ${IMGUI_SOURCES}
 )

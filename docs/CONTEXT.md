@@ -32,19 +32,23 @@ beaming.
 | Relativistic jet | Opt-in (off by default). Bipolar, axisymmetric, **emission-only** (optically thin, additive) solid cone with a transverse Gaussian profile, bounded axial power-law and soft top fade. Doppler beaming from a single constant bulk velocity `β` (`δ^(3+α)`). All parameters live in `config.json` + ImGui |
 | UI | ImGui control panel mutates runtime params and triggers a re-render; changes are **not** written back to `config.json` |
 | Config | `etc/config.json` loaded once at startup; missing keys fall back to struct defaults |
+| Automation | `--render <config.json> --out <file>` renders one frame with a **hidden** window, reads back the post-tone-map `RGBA32F` texture (`RayTracer::readback` → `glGetTexImage`), and writes raw little-endian `float32` + a `<file>.meta` shape sidecar — the observation seam for GPU regression. No GL 4.3 compute → exit 2 (`skipped`), never a false pass |
 | Logging | `ILogger` interface + spdlog backend, reached through the `GlobalLogger` singleton and `LOG_*` macros |
 | Build | CMake ≥ 3.10, C++17, OpenGL 4.3 Core; GLEW loader; ccache |
 | Third-party | Vendored under `lib/` (imgui, nlohmann/json, spdlog) — see caveats |
-| Tests | CPU unit tests for metric / integrator / config (`tests/`, tickets 0008–0009) run under CTest with no GL context. GPU correctness (golden regression, emission kernels) and performance are not yet automated |
+| Tests | CPU unit tests for metric / integrator / config (`tests/`) plus a headless-render determinism check (`tests/gpu/`) run under CTest. The unit layer needs no GL context; the GPU check self-reports `skipped` when no 4.3 compute context exists. Golden regression, the emission kernels and performance are not yet automated (tickets 0008–0010) |
 
 ## 3. Architecture
 
 ```
 main.cpp
+├─ CLI               no args → interactive; `--render <cfg> --out <file>` → headless
 ├─ Config            etc/config.json  -> struct params
-├─ Window            GLFW OpenGL 4.3 Core context + GLEW init
-├─ cpuValidation()   CPU GeodesicIntegrator — startup sanity trace only
-├─ RayTracer
+├─ buildRayTracerParams(config)  config -> RayTracerParams (shared by both paths)
+├─ Window            GLFW OpenGL 4.3 Core context + GLEW init (visible or hidden)
+├─ cpuValidation()   CPU GeodesicIntegrator — startup sanity trace only (interactive)
+├─ [headless]        hidden window → one compute dispatch → RayTracer::readback → file
+├─ RayTracer         (interactive path)
 │    Pass 1  raytrace.comp   compute, 16x16 groups, one thread per pixel
 │              loop: rk4Step -> accumulateJet -> disk-hit test -> termination
 │              terminal colour (captured/disk/sky) + jetAccum
@@ -66,7 +70,10 @@ Layers:
   documents the disk model and holds its default constants; the jet parameter
   block is `JetParams`.
 - **app** — `Config` (`config.h/.cpp`) parses JSON; `Window`
-  (`window.h/.cpp`) wraps GLFW/GLEW and logs GL/compute limits.
+  (`window.h/.cpp`) wraps GLFW/GLEW and logs GL/compute limits (visible by
+  default, `visible=false` for headless); `render_params.*` holds the shared
+  config→`RayTracerParams` translation; `headless.*` implements the
+  `--render` entry point and raw-float output.
 - **logging** — `logger.h` defines `ILogger`/`GlobalLogger`; `spdlog_logger.*`
   is the backend.
 - **shaders** — `raytrace.comp` (all shipping physics), `fullscreen.vert`,
@@ -77,8 +84,9 @@ Build targets (see [adr/0005](./adr/0005-extract-blackhole-core.md)):
 - **`blackhole_core`** — a **GL-free static library**: `core` + `app/config` +
   `logging`. Must not include or link GL/GLFW/ImGui. Test targets link this
   library **only**.
-- **`BlackholeRenderer`** — the executable: `main`, `app/window`, `rendering`,
-  vendored ImGui; links `blackhole_core` plus OpenGL/GLFW/GLEW.
+- **`BlackholeRenderer`** — the executable: `main`, `app/window`,
+  `app/render_params`, `app/headless`, `rendering`, vendored ImGui; links
+  `blackhole_core` plus OpenGL/GLFW/GLEW.
 
 ## 4. Physics & sign conventions (non-negotiable)
 
@@ -116,8 +124,12 @@ Build targets (see [adr/0005](./adr/0005-extract-blackhole-core.md)):
    in sync by hand — a physics change must be applied to **both**.
 2. **Header/source separation.** Headers declare types and inline accessors;
    non-trivial bodies live in `.cpp` (`metric.cpp`, `geodesic_integrator.cpp`).
-3. **One render entry point.** The GPU path is the only shipping renderer;
-   the CPU integrator exists to validate the geodesic math, not to draw.
+3. **One shipping render entry point, plus one automation entry point.** The GPU
+   path is the only shipping renderer; the CPU integrator exists to validate the
+   geodesic math, not to draw. `--render` is a non-interactive *observation*
+   entry point into the *same* `RayTracer` (hidden window, one dispatch,
+   texture readback) used by regression tests — it adds no second rendering
+   implementation.
 4. **Re-render only on change.** `needsRender` gates the expensive compute
    dispatch; unchanged frames reuse the texture via `drawLastFrame()`.
 5. **Run from the repository root.** Shader paths (`shaders/...`) and the config
@@ -156,14 +168,16 @@ Build targets (see [adr/0005](./adr/0005-extract-blackhole-core.md)):
   slightly under-scaling beaming near the jet base. The implementation is
   faithful to the spec formula (see
   [adr/0004](./adr/0004-jet-constant-bulk-velocity-beaming.md)).
-- **Testing covers the CPU core only.** A testing & performance standard is
-  defined
+- **Testing covers the CPU core plus the headless seam.** A testing &
+  performance standard is defined
   ([standards/testing-and-performance.md](./standards/testing-and-performance.md)),
   with an in-progress harness spec
   ([spec/0002](./spec/0002-testing-and-performance-harness.md)). Tickets 0008
-  and 0009 landed the `blackhole_core` split and CPU unit tests for the metric,
-  integrator and config. Nothing automates the **GPU** path yet — golden
-  regression, the emission kernels and performance are still verified by eye.
+  and 0009 landed the `blackhole_core` split and CPU unit tests; ticket 0010
+  landed the headless `--render` + `RayTracer::readback` observation seam and a
+  determinism check. **Golden regression against committed references, the
+  emission kernels and performance budgets are still unautomated** (tickets
+  0011+) — the emission physics is still verified by eye.
 
 ## 7. Directory Layout
 

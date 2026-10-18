@@ -287,3 +287,20 @@ void RayTracer::drawLastFrame() {
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
 }
+
+bool RayTracer::readback(std::vector<float>& out) const {
+    if (!outputTexture_ || width_ <= 0 || height_ <= 0) {
+        return false;
+    }
+
+    out.resize(static_cast<size_t>(width_) * height_ * 4);
+
+    // Drain any stale errors so we only observe failures from this read.
+    while (glGetError() != GL_NO_ERROR) {}
+
+    glBindTexture(GL_TEXTURE_2D, outputTexture_);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, out.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    return glGetError() == GL_NO_ERROR;
+}

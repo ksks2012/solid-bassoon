@@ -7,7 +7,7 @@ static void glfwErrorCallback(int error, const char* description) {
     LOG_ERROR("GLFW", "Error " + std::to_string(error) + ": " + description);
 }
 
-Window::Window(const std::string& title, int width, int height)
+Window::Window(const std::string& title, int width, int height, bool visible)
     : width_(width), height_(height)
 {
     glfwSetErrorCallback(glfwErrorCallback);
@@ -21,6 +21,8 @@ Window::Window(const std::string& title, int width, int height)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+    // Headless mode creates a hidden window — same context, no visible surface.
+    glfwWindowHint(GLFW_VISIBLE, visible ? GLFW_TRUE : GLFW_FALSE);
 
     window_ = glfwCreateWindow(width_, height_, title.c_str(), nullptr, nullptr);
     if (!window_) {
@@ -29,7 +31,9 @@ Window::Window(const std::string& title, int width, int height)
     }
 
     glfwMakeContextCurrent(window_);
-    glfwSwapInterval(1);  // vsync
+    if (visible) {
+        glfwSwapInterval(1);  // vsync
+    }
 
     // Initialise GLEW after context creation
     glewExperimental = GL_TRUE;

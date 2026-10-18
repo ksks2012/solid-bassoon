@@ -1,5 +1,7 @@
 #include "app/window.h"
 #include "app/config.h"
+#include "app/headless.h"
+#include "app/render_params.h"
 #include "logging/logger.h"
 #include "logging/spdlog_logger.h"
 #include "core/metric.h"
@@ -12,7 +14,20 @@
 
 #include <iostream>
 #include <cmath>
+#include <cstdio>
 #include <string>
+
+namespace {
+void printUsage(const char* prog) {
+    std::printf(
+        "Usage:\n"
+        "  %s                                     Interactive viewer (etc/config.json)\n"
+        "  %s --render <config.json> --out <file>\n"
+        "        Render one frame headlessly to <file>: raw little-endian\n"
+        "        float32 RGBA plus a <file>.meta shape sidecar.\n",
+        prog, prog);
+}
+}  // namespace
 
 // ── CPU validation helper ─────────────────────────────────────────────────────
 // Trace a few test rays on the CPU at startup to verify the integrator.
@@ -84,9 +99,56 @@ static void cpuValidation(const SchwarzschildMetric& metric, const Config& confi
 }
 
 int main(int argc, char* argv[]) {
+    // ── CLI parsing ───────────────────────────────────────────────────────────
+    bool headless = false;
+    std::string configPath;
+    std::string outPath;
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--help" || arg == "-h") {
+            printUsage(argv[0]);
+            return 0;
+        } else if (arg == "--render") {
+            headless = true;
+            // Optional config path; defaults to etc/config.json.
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                configPath = argv[++i];
+            }
+        } else if (arg == "--out") {
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "error: --out requires a file path\n");
+                printUsage(argv[0]);
+                return 1;
+            }
+            outPath = argv[++i];
+        } else {
+            std::fprintf(stderr, "Unknown argument: %s\n", arg.c_str());
+            printUsage(argv[0]);
+            return 1;
+        }
+    }
+
+    if (headless && configPath.empty()) configPath = "etc/config.json";
+    if (headless && outPath.empty()) {
+        std::fprintf(stderr, "error: --render requires --out <file>\n");
+        printUsage(argv[0]);
+        return 1;
+    }
+    if (!headless && !outPath.empty()) {
+        std::fprintf(stderr, "error: --out is only valid with --render\n");
+        printUsage(argv[0]);
+        return 1;
+    }
+
     // ── Logger setup ──────────────────────────────────────────────────────────
     auto logger = std::make_shared<SpdlogLogger>();
     GlobalLogger::set(logger);
+
+    // ── Headless automation mode ──────────────────────────────────────────────
+    if (headless) {
+        return runHeadless(configPath, outPath);
+    }
 
     // ── Config ────────────────────────────────────────────────────────────────
     Config config;
@@ -141,36 +203,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    RayTracerParams rtParams;
-    rtParams.mass            = static_cast<float>(config.blackhole.mass);
-    rtParams.rs              = static_cast<float>(config.blackhole.rs);
-    rtParams.cam_distance    = static_cast<float>(config.camera.distance);
-    rtParams.cam_inclination = static_cast<float>(config.camera.inclination);
-    rtParams.cam_fov         = static_cast<float>(config.camera.fov);
-    rtParams.max_steps       = config.render.max_steps;
-    rtParams.step_size       = static_cast<float>(config.render.step_size);
-    rtParams.abort_distance  = static_cast<float>(config.render.abort_distance);
-    rtParams.exposure        = static_cast<float>(config.render.exposure);
-    rtParams.gamma           = static_cast<float>(config.render.gamma);
-
-    // Accretion disk from config
-    rtParams.disk_inner   = static_cast<float>(config.disk.inner_radius);
-    rtParams.disk_outer   = static_cast<float>(config.disk.outer_radius);
-    rtParams.disk_temp    = static_cast<float>(config.disk.temperature);
-    rtParams.disk_enabled = 1;
-
-    // Relativistic jet from config (off by default)
-    rtParams.jet.enabled          = config.jet.enabled ? 1 : 0;
-    rtParams.jet.base_radius      = static_cast<float>(config.jet.base_radius);
-    rtParams.jet.opening_angle    = static_cast<float>(config.jet.opening_angle);
-    rtParams.jet.profile_exponent = static_cast<float>(config.jet.profile_exponent);
-    rtParams.jet.max_height       = static_cast<float>(config.jet.max_height);
-    rtParams.jet.radial_sigma     = static_cast<float>(config.jet.radial_sigma);
-    rtParams.jet.z_falloff        = static_cast<float>(config.jet.z_falloff);
-    rtParams.jet.axial_falloff    = static_cast<float>(config.jet.axial_falloff);
-    rtParams.jet.bulk_velocity    = static_cast<float>(config.jet.bulk_velocity);
-    rtParams.jet.spectral_index   = static_cast<float>(config.jet.spectral_index);
-    rtParams.jet.emissivity       = static_cast<float>(config.jet.emissivity);
+    RayTracerParams rtParams = buildRayTracerParams(config);
 
     LOG_INFO("Main", std::string("Relativistic jet: ") +
              (config.jet.enabled ? "enabled" : "disabled") +
