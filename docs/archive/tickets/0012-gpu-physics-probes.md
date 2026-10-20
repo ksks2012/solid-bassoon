@@ -1,6 +1,6 @@
 # 0012 — GPU physics probes + `physics.glsl` split
 
-**Spec:** [../spec/0002-testing-and-performance-harness.md](../spec/0002-testing-and-performance-harness.md)
+**Spec:** [../spec/0002-testing-and-performance-harness.md](../../spec/0002-testing-and-performance-harness.md)
 
 **What to build:** Component probes for the emission kernels that exist only in GLSL — `jetDensity`, `jetBeamFactor`, `diskEmission`, and the tone map — plus the refactor that makes them reachable. Extract the pure kernels into `shaders/physics.glsl`, included by both `raytrace.comp` and a probe compute shader, and compare them against an independent CPU reimplementation.
 
@@ -24,4 +24,4 @@
 - **Full-render invariant (S4).** `tests/gpu/no_nan_check.py` renders all five scenes and asserts finite, non-negative, `≤ 1 + 1e-5` (ADR-0001 ceiling), and non-blank.
 - **Verification.** 11/11 CTest pass with `GALLIUM_DRIVER=d3d12`; the probe and invariant checks also pass on llvmpipe, while the golden honestly skips on the driver mismatch. Failure paths were exercised explicitly (perturbed probe pair rejected; NaN/negative/ceiling/blank buffers each reported).
 
-**See:** [../standards/testing-and-performance.md](../standards/testing-and-performance.md) · [../adr/0005-extract-blackhole-core.md](../adr/0005-extract-blackhole-core.md)
+**See:** [../standards/testing-and-performance.md](../../standards/testing-and-performance.md) · [../adr/0005-extract-blackhole-core.md](../../adr/0005-extract-blackhole-core.md)

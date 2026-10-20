@@ -1,6 +1,6 @@
 # 0010 — Headless `--render` entry point + output readback
 
-**Spec:** [../spec/0002-testing-and-performance-harness.md](../spec/0002-testing-and-performance-harness.md)
+**Spec:** [../spec/0002-testing-and-performance-harness.md](../../spec/0002-testing-and-performance-harness.md)
 
 **What to build:** A headless automation entry point on the executable (`--render <config.json> --out <file>`) that initialises a hidden window, dispatches the compute shader once, reads back the **post-tone-map `RGBA32F`** output texture, writes it, and exits. Add a thin `RayTracer::readback` accessor. This is the observation seam for all regression tests.
 
@@ -16,4 +16,4 @@
 - [x] `main.cpp` gains a minimal CLI (`--render`, `--out`, `--help`); `app/render_params.*` centralises the config→`RayTracerParams` mapping.
 - [x] `ctest` green: `test_smoke` / `test_metric` / `test_integrator` / `test_config` / `test_headless_render` (5/5).
 
-**See:** [../standards/testing-and-performance.md](../standards/testing-and-performance.md) · [../adr/0005-extract-blackhole-core.md](../adr/0005-extract-blackhole-core.md)
+**See:** [../standards/testing-and-performance.md](../../standards/testing-and-performance.md) · [../adr/0005-extract-blackhole-core.md](../../adr/0005-extract-blackhole-core.md)

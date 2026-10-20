@@ -1,8 +1,8 @@
 # Execution Summary: 0013-benchmark-baseline
 
-- **Date**: 2026-07-28
+- **Date**: 2026-10-20
 - **Spec/ADR Path**: `docs/spec/0002-testing-and-performance-harness.md`
-- **Ticket Path**: `docs/ticket/0013-benchmark-baseline.md`
+- **Ticket Path**: `docs/archive/tickets/0013-benchmark-baseline.md`
 - **Branch**: `main`
 
 ---

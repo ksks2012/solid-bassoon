@@ -238,11 +238,11 @@ solid-bassoon/
     ├── CHANGELOG.md         # milestone / version history
     ├── adr/                 # architecture decision records (never deleted)
     ├── spec/                # feature specs (intent); not archived
-    ├── ticket/              # active tracer-bullet work units
+    ├── ticket/              # active tracer-bullet work units (0014 only)
     ├── standards/           # development & technical standards
     └── archive/
-        ├── tickets/         # completed tickets
-        └── summaries/       # completed execution summaries
+        ├── tickets/         # completed tickets (0001–0013)
+        └── summaries/       # completed execution summaries (0001–0013)
 ```
 
 Document kinds and their lifecycles are defined in

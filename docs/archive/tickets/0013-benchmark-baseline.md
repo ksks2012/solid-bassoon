@@ -1,6 +1,6 @@
 # 0013 — `--bench` + committed baseline + performance gate
 
-**Spec:** [../spec/0002-testing-and-performance-harness.md](../spec/0002-testing-and-performance-harness.md)
+**Spec:** [../spec/0002-testing-and-performance-harness.md](../../spec/0002-testing-and-performance-harness.md)
 
 **What to build:** The performance layer: a headless benchmark entry point, a committed baseline, and an explicit correctness-normalized gate.
 
@@ -89,4 +89,4 @@ GPU), `test_perf_gate` (GPU, `SKIP_RETURN_CODE 2`) — the suite is now 14 tests
 The golden regression still reports `max_abs = 0` on all five scenes after the
 shader gained the counters.
 
-**See:** [../standards/testing-and-performance.md](../standards/testing-and-performance.md) · [../../bench/README.md](../../bench/README.md)
+**See:** [../standards/testing-and-performance.md](../../standards/testing-and-performance.md) · [../../bench/README.md](../../../bench/README.md)

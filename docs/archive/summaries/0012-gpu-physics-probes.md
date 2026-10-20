@@ -2,7 +2,7 @@
 
 - **Date**: 2026-10-20
 - **Spec/ADR Path**: `docs/spec/0002-testing-and-performance-harness.md`, `docs/adr/0001-global-tone-mapping.md`, `docs/adr/0005-extract-blackhole-core.md`
-- **Ticket Path**: `docs/ticket/0012-gpu-physics-probes.md`
+- **Ticket Path**: `docs/archive/tickets/0012-gpu-physics-probes.md`
 - **Branch**: `main`
 
 ---

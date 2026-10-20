@@ -2,7 +2,7 @@
 
 - **Date**: 2026-10-17
 - **Spec/ADR Path**: `docs/spec/0002-testing-and-performance-harness.md`, `docs/adr/0005-extract-blackhole-core.md`
-- **Ticket Path**: `docs/ticket/0009-cpu-unit-tests.md`
+- **Ticket Path**: `docs/archive/tickets/0009-cpu-unit-tests.md`
 - **Branch**: `main`
 
 ---

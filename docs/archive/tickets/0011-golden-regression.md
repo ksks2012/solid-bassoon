@@ -1,6 +1,6 @@
 # 0011 — Golden regression harness + first references
 
-**Spec:** [../spec/0002-testing-and-performance-harness.md](../spec/0002-testing-and-performance-harness.md)
+**Spec:** [../spec/0002-testing-and-performance-harness.md](../../spec/0002-testing-and-performance-harness.md)
 
 **What to build:** The regression layer: a committed comparison tool and a fixed reference set over the canned scenes, plus the two cheapest, highest-value invariants. This milestone gets golden regression actually running.
 
@@ -15,4 +15,4 @@
 - [x] The **determinism** check (render twice ⇒ identical buffer) is wired.
 - [x] The golden-update policy is enforced explicitly: a reference change ships in the **same commit** as the code change and records the reason; a reference that changes without a code change is a defect, not a refresh.
 
-**See:** [../standards/testing-and-performance.md](../standards/testing-and-performance.md) · [../adr/0005-extract-blackhole-core.md](../adr/0005-extract-blackhole-core.md)
+**See:** [../standards/testing-and-performance.md](../../standards/testing-and-performance.md) · [../adr/0005-extract-blackhole-core.md](../../adr/0005-extract-blackhole-core.md)

@@ -8,6 +8,19 @@ distilled, durable record.
 
 ---
 
+## P2.2 — Automated testing & performance harness (2026-10-20)
+
+Spec: [0002-testing-and-performance-harness](./spec/0002-testing-and-performance-harness.md) · Tickets
+[0008](./archive/tickets/0008-extract-core-library.md)–[0013](./archive/tickets/0013-benchmark-baseline.md)
+
+- **Testable core** — a GL-free `blackhole_core` static library (`core` + `app/config` + `logging`); test targets link it only. ([adr/0005](./adr/0005-extract-blackhole-core.md)) (`5083202`)
+- **CPU unit tests** — metric, RK4 integrator and config, each its own CTest executable with a committed `CHECK` harness (`23db6c2`).
+- **Observation seam** — `--render <cfg> --out <file>`: hidden window, one compute dispatch, `RGBA32F` readback with a shape sidecar. No GL 4.3 compute ⇒ exit 2 (`skipped`), never a false pass. ([adr/0005](./adr/0005-extract-blackhole-core.md)) (`34e8a3c`)
+- **Golden regression** — five committed float32 references with provenance sidecars; `jetoff` byte-identical to the pre-jet baseline, disk on/off locality confined to the disk footprint, and a deterministic-repeat check (`bdabe9e`).
+- **GPU physics probes** — pure emission kernels extracted to `shaders/physics.glsl` (render unchanged, `max_abs = 0`), pinned by hand-derived literals and a 48-record GPU↔CPU cross-validation; plus a full-render finite/non-negative/ceiling invariant (`4264fbf`).
+- **Performance gate** — `--bench` (warm-up + `GL_TIME_ELAPSED` around the dispatch, median/p95 rather than a lone mean) against a committed five-case baseline; ±10 % band in both directions, reference-GPU budgets (12 ms full frame at 512×512, ≤15 % jet marginal), and an RK4 steps-per-ray diagnostic whose per-step atomic cost is measured separately and kept out of the gated number. Correctness-normalized, with skip/fail kept honest. Measured: **7.62 ms** median (64 % of budget), jet marginal **1.4 %**. (`851d6d0`) — see [bench/README.md](../bench/README.md)
+- **Suite** — 14 CTest tests; the performance gate runs behind a `correctness` fixture, so it cannot publish without a green suite. CI wiring is the remaining ticket (0014).
+
 ## P2.1 — Relativistic jet + display pipeline (2026-10-16)
 
 Spec: [0001-relativistic-jet](./spec/0001-relativistic-jet.md) · Tickets

@@ -1,6 +1,6 @@
 # 0009 — CPU unit tests for metric, integrator, and config
 
-**Spec:** [../spec/0002-testing-and-performance-harness.md](../spec/0002-testing-and-performance-harness.md)
+**Spec:** [../spec/0002-testing-and-performance-harness.md](../../spec/0002-testing-and-performance-harness.md)
 
 **What to build:** The base of the test pyramid: exact, fast unit tests for the pure core, run under CTest with **no GL context**.
 
@@ -13,4 +13,4 @@
 - [x] **Config** (`config_test.cpp`): struct defaults; every documented key applied; unknown keys/sections ignored with defaults preserved; missing file and malformed JSON raise `ConfigError`.
 - [x] All tests are deterministic across repeated runs, require no GL context (no GL/GLFW/GLEW linked), and the whole suite runs in ~0.02 s.
 
-**See:** [../standards/testing-and-performance.md](../standards/testing-and-performance.md) · [../adr/0005-extract-blackhole-core.md](../adr/0005-extract-blackhole-core.md)
+**See:** [../standards/testing-and-performance.md](../../standards/testing-and-performance.md) · [../adr/0005-extract-blackhole-core.md](../../adr/0005-extract-blackhole-core.md)

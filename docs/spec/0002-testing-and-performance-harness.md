@@ -165,12 +165,12 @@ The rollout is cut into independently deliverable tickets. The first milestone �
 
 | Ticket | Step | Blocked by |
 |---|---|---|
-| [0008](../ticket/0008-extract-core-library.md) | Extract `blackhole_core` + CTest skeleton | — |
-| [0009](../ticket/0009-cpu-unit-tests.md) | CPU unit tests (metric / integrator / config) | 0008 |
-| [0010](../ticket/0010-headless-render.md) | Headless `--render` + output readback | 0008 |
-| [0011](../ticket/0011-golden-regression.md) | Golden regression harness + first references | 0010 |
-| [0012](../ticket/0012-gpu-physics-probes.md) | GPU physics probes + `physics.glsl` split | 0010 |
-| [0013](../ticket/0013-benchmark-baseline.md) | `--bench` + committed baseline + performance gate | 0010 |
+| [0008](../archive/tickets/0008-extract-core-library.md) | Extract `blackhole_core` + CTest skeleton | — |
+| [0009](../archive/tickets/0009-cpu-unit-tests.md) | CPU unit tests (metric / integrator / config) | 0008 |
+| [0010](../archive/tickets/0010-headless-render.md) | Headless `--render` + output readback | 0008 |
+| [0011](../archive/tickets/0011-golden-regression.md) | Golden regression harness + first references | 0010 |
+| [0012](../archive/tickets/0012-gpu-physics-probes.md) | GPU physics probes + `physics.glsl` split | 0010 |
+| [0013](../archive/tickets/0013-benchmark-baseline.md) | `--bench` + committed baseline + performance gate | 0010 |
 | [0014](../ticket/0014-ci-wiring.md) | CI wiring with honest skip reporting | 0009, 0011, 0013 |
 
 **Acceptance of this spec:** all seven tickets are Done and the gates are
