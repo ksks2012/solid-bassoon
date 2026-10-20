@@ -73,6 +73,14 @@ struct RayTracerParams {
     JetParams jet;
 };
 
+// Totals accumulated by the shader's benchmark statistics pass (ticket 0013):
+// how many RK4 steps were taken across every ray, and how many rays were
+// traced. Their quotient is the derived diagnostic "average RK4 steps per ray".
+struct BenchCounters {
+    unsigned long long steps = 0;
+    unsigned long long rays  = 0;
+};
+
 class RayTracer {
 public:
     RayTracer();
@@ -113,6 +121,18 @@ public:
     // Resize the output texture (e.g. on window resize).
     void resize(int width, int height);
 
+    // ── Benchmark dispatch (ticket 0013, spec/0002 performance protocol) ──────
+    // Runs pass 1 exactly as render() does, but presents nothing and brackets
+    // the compute dispatch with a GL_TIME_ELAPSED query, so `gpuMs` is GPU time
+    // for the frame rather than CPU time around it. `statsEnabled` additionally
+    // switches on the shader's per-step SSBO counters — a measurably slower
+    // pass that is timed separately and reported, never gated — and, when
+    // `counters` is given, reads its totals back. Returns false if the tracer
+    // is not initialised or a GL error was reported; `gpuMs` and `counters`
+    // are left untouched in that case.
+    bool dispatchTimed(const RayTracerParams& params, bool statsEnabled,
+                       double& gpuMs, BenchCounters* counters = nullptr);
+
 private:
     int width_  = 0;
     int height_ = 0;
@@ -120,6 +140,10 @@ private:
     // Compute shader
     GLuint computeProgram_ = 0;
     GLuint outputTexture_  = 0;
+
+    // Benchmark resources: the stats SSBO and the GL_TIME_ELAPSED query.
+    GLuint statsBuffer_ = 0;
+    GLuint timeQuery_  = 0;
 
     // Fullscreen quad
     GLuint quadProgram_ = 0;
@@ -131,6 +155,11 @@ private:
     GLuint linkProgram(GLuint shader);
     GLuint linkProgram(GLuint vertShader, GLuint fragShader);
     std::string loadShaderSource(const std::string& path);
+
+    // Every uniform of the compute program, shared by render() and
+    // dispatchTimed() so the two paths can never drift apart. `statsEnabled`
+    // selects whether the shader accumulates the benchmark counters.
+    void setComputeUniforms(const RayTracerParams& params, bool statsEnabled);
 
     void createOutputTexture();
     void createFullscreenQuad();

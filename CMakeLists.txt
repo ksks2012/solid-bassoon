@@ -25,6 +25,7 @@ add_library(blackhole_core STATIC
     src/core/metric.cpp
     src/core/geodesic_integrator.cpp
     src/core/emission_reference.cpp
+    src/core/bench_stats.cpp
     src/app/config.cpp
     src/logging/spdlog_logger.cpp
 )

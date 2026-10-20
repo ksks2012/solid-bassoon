@@ -197,6 +197,8 @@ RayTracer::~RayTracer() {
     if (outputTexture_)  glDeleteTextures(1, &outputTexture_);
     if (quadVBO_)        glDeleteBuffers(1, &quadVBO_);
     if (quadVAO_)        glDeleteVertexArrays(1, &quadVAO_);
+    if (statsBuffer_)    glDeleteBuffers(1, &statsBuffer_);
+    if (timeQuery_)     glDeleteQueries(1, &timeQuery_);
 }
 
 bool RayTracer::init(int width, int height) {
@@ -233,6 +235,22 @@ bool RayTracer::init(int width, int height) {
     createOutputTexture();
     createFullscreenQuad();
 
+    // ── Benchmark resources (ticket 0013) ─────────────────────────────────
+    // The stats SSBO holds two 32-bit totals (RK4 steps, rays) and the query
+    // times a dispatch in GPU time.  Both are created eagerly so dispatchTimed()
+    // has no setup path to fail and render() never sees a partial state.
+    glGenBuffers(1, &statsBuffer_);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, statsBuffer_);
+    const GLuint zeroCounters[2] = {0u, 0u};
+    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(zeroCounters), zeroCounters,
+                 GL_DYNAMIC_COPY);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    glGenQueries(1, &timeQuery_);
+    if (!statsBuffer_ || !timeQuery_) {
+        LOG_ERROR("RayTracer", "Failed to create benchmark resources");
+        return false;
+    }
+
     LOG_INFO("RayTracer", "Initialised (" + std::to_string(width_) + "x" +
              std::to_string(height_) + ")");
     return true;
@@ -247,13 +265,8 @@ void RayTracer::resize(int width, int height) {
              std::to_string(height_));
 }
 
-void RayTracer::render(const RayTracerParams& params) {
-    // ── Pass 1: Compute shader — trace geodesics ──────────────────────────────
-    glUseProgram(computeProgram_);
-
-    // Bind output image
-    glBindImageTexture(0, outputTexture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-
+void RayTracer::setComputeUniforms(const RayTracerParams& params,
+                                   bool statsEnabled) {
     // Set uniforms
     glUniform1f(glGetUniformLocation(computeProgram_, "u_mass"),           params.mass);
     glUniform1f(glGetUniformLocation(computeProgram_, "u_rs"),             params.rs);
@@ -294,6 +307,21 @@ void RayTracer::render(const RayTracerParams& params) {
     glUniform1f(glGetUniformLocation(computeProgram_, "u_jet_spectral_index"),   params.jet.spectral_index);
     glUniform1f(glGetUniformLocation(computeProgram_, "u_jet_emissivity"),       params.jet.emissivity);
 
+    // Benchmark diagnostics (ticket 0013): off for every render(), on only
+    // for the diagnostic pass of dispatchTimed().
+    glUniform1i(glGetUniformLocation(computeProgram_, "u_statsEnabled"),
+                 statsEnabled ? 1 : 0);
+}
+
+void RayTracer::render(const RayTracerParams& params) {
+    // ── Pass 1: Compute shader — trace geodesics ──────────────────────────────
+    glUseProgram(computeProgram_);
+
+    // Bind output image
+    glBindImageTexture(0, outputTexture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+
+    setComputeUniforms(params, /*statsEnabled=*/false);
+
     // Dispatch: one thread per pixel, work groups of 16×16
     GLuint groupsX = (width_  + 15) / 16;
     GLuint groupsY = (height_ + 15) / 16;
@@ -316,6 +344,68 @@ void RayTracer::render(const RayTracerParams& params) {
     glBindVertexArray(quadVAO_);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
+}
+
+// ── Benchmark dispatch (ticket 0013, spec/0002 performance protocol) ───────────
+
+bool RayTracer::dispatchTimed(const RayTracerParams& params, bool statsEnabled,
+                              double& gpuMs, BenchCounters* counters) {
+    if (!computeProgram_ || !outputTexture_ || !statsBuffer_ || !timeQuery_) {
+        return false;
+    }
+
+    // Drain stale errors so only this dispatch's failures are observed.
+    while (glGetError() != GL_NO_ERROR) {}
+
+    glUseProgram(computeProgram_);
+    glBindImageTexture(0, outputTexture_, 0, GL_FALSE, 0, GL_WRITE_ONLY,
+                       GL_RGBA32F);
+    setComputeUniforms(params, statsEnabled);
+
+    if (statsEnabled) {
+        // Fresh totals for this pass, and the binding the shader reads.  Both
+        // happen outside the timed region: the benchmark measures the frame,
+        // not its bookkeeping.
+        const GLuint zeroCounters[2] = {0u, 0u};
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, statsBuffer_);
+        glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(zeroCounters),
+                        zeroCounters);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, statsBuffer_);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    }
+
+    const GLuint groupsX = (width_  + 15) / 16;
+    const GLuint groupsY = (height_ + 15) / 16;
+
+    // GPU time of the dispatch itself — not CPU time around it, and no present
+    // pass: the budget in bench/baseline.json is about tracing the frame.
+    glBeginQuery(GL_TIME_ELAPSED, timeQuery_);
+    glDispatchCompute(groupsX, groupsY, 1);
+    glEndQuery(GL_TIME_ELAPSED);
+
+    // GL_QUERY_RESULT blocks until the elapsed time is available, which also
+    // means the dispatch has finished — a real fence for the frame.
+    GLuint64 elapsedNs = 0;
+    glGetQueryObjectui64v(timeQuery_, GL_QUERY_RESULT, &elapsedNs);
+    const double measuredMs = static_cast<double>(elapsedNs) / 1.0e6;
+
+    if (statsEnabled && counters) {
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        GLuint totals[2] = {0u, 0u};
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, statsBuffer_);
+        glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(totals), totals);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+        counters->steps = totals[0];
+        counters->rays  = totals[1];
+    }
+
+    if (glGetError() != GL_NO_ERROR) {
+        return false;  // gpuMs and counters are untouched on failure
+    }
+
+    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    gpuMs = measuredMs;
+    return true;
 }
 
 void RayTracer::drawLastFrame() {

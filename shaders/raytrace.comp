@@ -71,6 +71,23 @@ uniform float u_jet_bulk_velocity;    // β (constant)
 uniform float u_jet_spectral_index;   // α in the beaming exponent δ^(3+α)
 uniform float u_jet_emissivity;       // master brightness multiplier
 
+// ── Benchmark diagnostics (ticket 0013) ───────────────────────────────────────
+// Two 32-bit totals, written only when u_statsEnabled != 0: the RK4 step count
+// and the ray count, whose quotient is the derived diagnostic "average RK4
+// steps per ray".  Counting happens with a per-step SSBO atomic, which is
+// exact but expensive (every ray in flight contends for one word), so every
+// timed dispatch runs with the counter switched off and the diagnostic is
+// measured in its own pass — its cost is reported as stats_overhead_pct and is
+// never part of the gated measurement.  The counts cannot alter the rendered
+// image: they only touch this buffer.
+// A 32-bit total wraps above 4.29e9 steps; runBench() warns when a config's
+// worst case (pixels × u_max_steps) could reach that.
+layout (std430, binding = 3) buffer BenchCounters {
+    uint statSteps;
+    uint statRays;
+} benchCounters;
+uniform int u_statsEnabled;  // 0 = off (rendering and timed dispatches)
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 // Pure physics kernels (PI, JetShape/JetBeam, diskEmission, jetDensity,
@@ -373,6 +390,10 @@ void main() {
     // Out-of-bounds guard
     if (pixel.x >= u_resolution.x || pixel.y >= u_resolution.y) return;
 
+    // Benchmark diagnostic (ticket 0013): one ray counted here, one step
+    // counted per integration iteration below, both only when enabled.
+    if (u_statsEnabled != 0) atomicAdd(benchCounters.statRays, 1u);
+
     vec4 pos, mom;
     initRay(pixel, u_resolution, pos, mom);
 
@@ -421,6 +442,7 @@ void main() {
     vec3 jetAccum = vec3(0.0);
 
     for (int i = 0; i < u_max_steps; ++i) {
+        if (u_statsEnabled != 0) atomicAdd(benchCounters.statSteps, 1u);
         float h_eff = adaptiveStep(pos.y, u_rs, u_step_size);
         rk4Step(pos, mom, u_rs, h_eff);
 

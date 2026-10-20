@@ -1,0 +1,44 @@
+{
+  "blackhole": {
+    "mass": 1.0,
+    "spin": 0.0,
+    "rs": 2.0
+  },
+  "camera": {
+    "distance": 30.0,
+    "inclination": 80.0,
+    "azimuth": 0.0,
+    "fov": 60.0
+  },
+  "accretion_disk": {
+    "enabled": true,
+    "inner_radius": 6.0,
+    "outer_radius": 12.0,
+    "temperature": 1.0
+  },
+  "relativistic_jet": {
+    "enabled": true,
+    "base_radius": 3.2,
+    "opening_angle": 7.0,
+    "profile_exponent": 1.0,
+    "max_height": 40.0,
+    "radial_sigma": 0.4,
+    "z_falloff": 10.0,
+    "axial_falloff": 1.5,
+    "bulk_velocity": 0.95,
+    "spectral_index": 0.7,
+    "emissivity": 1.0
+  },
+  "rendering": {
+    "width": 512,
+    "height": 512,
+    "max_steps": 5000,
+    "step_size": 0.1,
+    "abort_distance": 100.0,
+    "exposure": 1.0,
+    "gamma": 1.0
+  },
+  "logger": {
+    "level": 2
+  }
+}

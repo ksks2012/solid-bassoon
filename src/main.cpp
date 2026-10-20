@@ -15,6 +15,7 @@
 #include <iostream>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 
 namespace {
@@ -28,8 +29,14 @@ void printUsage(const char* prog) {
         "  %s --probe <file>\n"
         "        Run the emission-kernel probe (no frame is rendered) and\n"
         "        write the results to <file>: raw little-endian float32 plus\n"
-        "        a <file>.meta sidecar.\n",
-        prog, prog, prog);
+        "        a <file>.meta sidecar.\n"
+        "  %s --bench [config.json] [--warmup N] [--frames M]\n"
+        "        Time M compute dispatches of the config after N warm-up ones\n"
+        "        (defaults: 5, 20) and print a CSV row: median, p95, mean,\n"
+        "        min, fps, GL_RENDERER, plus the RK4 steps-per-ray diagnostic\n"
+        "        and the cost of measuring it. bench/gate.py compares the row\n"
+        "        against bench/baseline.json.\n",
+        prog, prog, prog, prog);
 }
 }  // namespace
 
@@ -106,6 +113,9 @@ int main(int argc, char* argv[]) {
     // ── CLI parsing ───────────────────────────────────────────────────────────
     bool headless = false;
     bool probe = false;
+    bool bench = false;
+    int warmup = 5;
+    int frames = 20;
     std::string configPath;
     std::string outPath;
     std::string probePath;
@@ -136,6 +146,30 @@ int main(int argc, char* argv[]) {
             }
             probe = true;
             probePath = argv[++i];
+        } else if (arg == "--bench") {
+            bench = true;
+            // Optional config path; defaults to etc/config.json.
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                configPath = argv[++i];
+            }
+        } else if (arg == "--warmup" || arg == "--frames") {
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "error: %s requires a number\n", arg.c_str());
+                printUsage(argv[0]);
+                return 1;
+            }
+            char* end = nullptr;
+            const long value = std::strtol(argv[++i], &end, 10);
+            if (end == argv[i] || *end != '\0' || value < 0 ||
+                value > 1000000L) {
+                std::fprintf(stderr, "error: %s expects a non-negative "
+                                     "integer, got '%s'\n",
+                             arg.c_str(), argv[i]);
+                printUsage(argv[0]);
+                return 1;
+            }
+            if (arg == "--warmup") warmup = static_cast<int>(value);
+            else                   frames = static_cast<int>(value);
         } else {
             std::fprintf(stderr, "Unknown argument: %s\n", arg.c_str());
             printUsage(argv[0]);
@@ -159,6 +193,30 @@ int main(int argc, char* argv[]) {
         printUsage(argv[0]);
         return 1;
     }
+    if (bench && (headless || probe)) {
+        std::fprintf(stderr, "error: --bench is mutually exclusive with "
+                             "--render and --probe\n");
+        printUsage(argv[0]);
+        return 1;
+    }
+    if (frames <= 0) {
+        std::fprintf(stderr, "error: --frames must be at least 1\n");
+        printUsage(argv[0]);
+        return 1;
+    }
+    if (!bench && (warmup != 5 || frames != 20)) {
+        std::fprintf(stderr, "error: --warmup/--frames are only valid with "
+                             "--bench\n");
+        printUsage(argv[0]);
+        return 1;
+    }
+    if (bench && !outPath.empty()) {
+        std::fprintf(stderr, "error: --bench does not write a frame; --out is "
+                             "only valid with --render\n");
+        printUsage(argv[0]);
+        return 1;
+    }
+    if (bench && configPath.empty()) configPath = "etc/config.json";
 
     // ── Logger setup ──────────────────────────────────────────────────────────
     auto logger = std::make_shared<SpdlogLogger>();
@@ -170,6 +228,10 @@ int main(int argc, char* argv[]) {
     }
 
     // ── Emission-kernel probe (no frame rendered) ─────────────────────────────
+    if (bench) {
+        return runBench(configPath, warmup, frames);
+    }
+
     if (probe) {
         return runProbe(probePath);
     }

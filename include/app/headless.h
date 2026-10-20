@@ -27,4 +27,16 @@ int runHeadless(const std::string& configPath, const std::string& outPath);
 // tests/gpu/probe_check.py can compare the two directly.
 int runProbe(const std::string& outPath);
 
+// ── Benchmark entry point (ticket 0013, spec/0002 performance protocol) ───────
+// Times `frames` compute dispatches of `configPath` in a hidden window after
+// `warmup` discarded ones, using a GL_TIME_ELAPSED query — GPU time for
+// tracing the frame, with no present pass. A further pass with the shader's
+// per-step counters switched on supplies the derived diagnostic (average RK4
+// steps per ray) and the cost of the counter itself; that cost is reported as
+// stats_overhead_pct and is never part of the gated measurement.
+// Prints the CSV header and one row to stdout — the header line is the marker
+// the performance gate looks for among the log output — and returns
+// headless::{kOk,kFail,kSkip}.
+int runBench(const std::string& configPath, int warmup, int frames);
+
 #endif // HEADLESS_H

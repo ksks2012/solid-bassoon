@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "environment": {
+    "gl_renderer": "D3D12 (NVIDIA GeForce RTX 4070)"
+  },
+  "tolerance": 0.1,
+  "budgets": {
+    "full_frame_ms": 12.0,
+    "budget_width": 512,
+    "budget_height": 512,
+    "jet_marginal_pct": 15.0,
+    "jet_pair": [
+      "disk",
+      "jet_on"
+    ]
+  },
+  "frames": 20,
+  "warmup": 5,
+  "cases": [
+    {
+      "name": "disk",
+      "config": "etc/config.json",
+      "median_ms": 7.61958,
+      "p95_ms": 8.59648,
+      "steps_per_ray": 1207.4,
+      "stats_overhead_pct": 120.017,
+      "width": 512,
+      "height": 512,
+      "max_steps": 5000,
+      "jet_enabled": 0,
+      "disk_enabled": 1
+    },
+    {
+      "name": "jet_on",
+      "config": "bench/cases/jet_on.json",
+      "median_ms": 7.72454,
+      "p95_ms": 8.68762,
+      "steps_per_ray": 1207.4,
+      "stats_overhead_pct": 117.313,
+      "width": 512,
+      "height": 512,
+      "max_steps": 5000,
+      "jet_enabled": 1,
+      "disk_enabled": 1
+    },
+    {
+      "name": "disk_off",
+      "config": "tests/reference/scenes/diskoff.json",
+      "median_ms": 7.29754,
+      "p95_ms": 8.40192,
+      "steps_per_ray": 1310.88,
+      "stats_overhead_pct": 146.895,
+      "width": 512,
+      "height": 512,
+      "max_steps": 5000,
+      "jet_enabled": 0,
+      "disk_enabled": 0
+    },
+    {
+      "name": "hi_res",
+      "config": "bench/cases/hi_res.json",
+      "median_ms": 27.241,
+      "p95_ms": 27.4483,
+      "steps_per_ray": 1207.56,
+      "stats_overhead_pct": 140.511,
+      "width": 1024,
+      "height": 1024,
+      "max_steps": 5000,
+      "jet_enabled": 0,
+      "disk_enabled": 1
+    },
+    {
+      "name": "low_steps",
+      "config": "bench/cases/low_steps.json",
+      "median_ms": 4.95104,
+      "p95_ms": 5.72314,
+      "steps_per_ray": 896.395,
+      "stats_overhead_pct": 142.792,
+      "width": 512,
+      "height": 512,
+      "max_steps": 1000,
+      "jet_enabled": 0,
+      "disk_enabled": 1
+    }
+  ],
+  "last_update": {
+    "reason": "initial recording of the reference matrix (ticket 0013)",
+    "utc": "2026-10-20T06:54:32Z"
+  }
+}

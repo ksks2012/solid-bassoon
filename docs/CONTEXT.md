@@ -32,11 +32,11 @@ beaming.
 | Relativistic jet | Opt-in (off by default). Bipolar, axisymmetric, **emission-only** (optically thin, additive) solid cone with a transverse Gaussian profile, bounded axial power-law and soft top fade. Doppler beaming from a single constant bulk velocity `β` (`δ^(3+α)`). All parameters live in `config.json` + ImGui |
 | UI | ImGui control panel mutates runtime params and triggers a re-render; changes are **not** written back to `config.json` |
 | Config | `etc/config.json` loaded once at startup; missing keys fall back to struct defaults |
-| Automation | `--render <config.json> --out <file>` renders one frame with a **hidden** window, reads back the post-tone-map `RGBA32F` texture (`RayTracer::readback` → `glGetTexImage`), and writes raw little-endian `float32` + a `<file>.meta` shape sidecar — the observation seam for GPU regression. `--probe <file>` dispatches `shaders/probe.comp` over a fixed input table and writes the kernel outputs the same way. No GL 4.3 compute → exit 2 (`skipped`), never a false pass |
+| Automation | `--render <config.json> --out <file>` renders one frame with a **hidden** window, reads back the post-tone-map `RGBA32F` texture (`RayTracer::readback` → `glGetTexImage`), and writes raw little-endian `float32` + a `<file>.meta` shape sidecar — the observation seam for GPU regression. `--probe <file>` dispatches `shaders/probe.comp` over a fixed input table and writes the kernel outputs the same way. No GL 4.3 compute → exit 2 (`skipped`), never a false pass. `--bench <config> --warmup N --frames M` runs a hidden-window timed loop and prints one CSV row (`median, p95, mean, min, fps, renderer, steps_per_ray, …`) tagged with `GL_RENDERER` — the observation seam for performance regression (`runBench`, `core/bench_stats`) |
 | Logging | `ILogger` interface + spdlog backend, reached through the `GlobalLogger` singleton and `LOG_*` macros |
 | Build | CMake ≥ 3.10, C++17, OpenGL 4.3 Core; GLEW loader; ccache |
 | Third-party | Vendored under `lib/` (imgui, nlohmann/json, spdlog) — see caveats |
-| Tests | CPU unit tests for metric / integrator / config / **emission reference** (`tests/`) plus GPU checks under CTest: a headless-render determinism check, golden regression against five committed float32 references (`tests/reference/`, including a disk on/off locality invariant), a **GPU↔CPU probe cross-validation** of all four emission kernels, and a full-render finite/non-negative/tone-map-ceiling invariant — 11 tests. The unit layer needs no GL context; GPU checks self-report `skipped` (exit 2) when no 4.3 compute context exists. Performance budgets are not yet automated |
+| Tests | CPU unit tests for metric / integrator / config / **emission reference** / **bench statistics** (`tests/`) plus GPU checks under CTest: a headless-render determinism check, golden regression against five committed float32 references (`tests/reference/`, including a disk on/off locality invariant), a **GPU↔CPU probe cross-validation** of all four emission kernels, a full-render finite/non-negative/tone-map-ceiling invariant, and a **performance gate** against the committed baseline — 14 tests. The unit layer needs no GL context; GPU checks self-report `skipped` (exit 2) when no 4.3 compute context exists. Performance is automated by `bench/gate.py` (CTest `test_perf_gate`): correctness-normalized, ±10% band on the median, budgets at 512×512 — see [bench/README.md](../bench/README.md) |
 
 ## 3. Architecture
 
@@ -44,19 +44,26 @@ beaming.
 main.cpp
 ├─ CLI               no args → interactive; `--render <cfg> --out <file>` → headless
 │                     `--probe <file>` → hidden 64x64 context, one kernel-probe dispatch
+│                     `--bench <cfg> --warmup N --frames M` → timed loop, one CSV row
 ├─ Config            etc/config.json  -> struct params
 ├─ buildRayTracerParams(config)  config -> RayTracerParams (shared by both paths)
 ├─ Window            GLFW OpenGL 4.3 Core context + GLEW init (visible or hidden)
 ├─ cpuValidation()   CPU GeodesicIntegrator — startup sanity trace only (interactive)
 ├─ [headless]        hidden window → one compute dispatch → RayTracer::readback → file
 ├─ [probe]           hidden window → RayTracer::runProbe → probe.comp SSBO → file
+├─ [bench]           hidden window → warm-up discarded → N timed dispatches
+│                      (+ a stats pass with atomic counters on, same N)
+│                      → core/bench_stats::summarize → CSV header + row
 ├─ RayTracer         (interactive path)
 │    Pass 1  raytrace.comp   compute, 16x16 groups, one thread per pixel
 │              #include "physics.glsl"  pure kernels, parameters passed in
 │              loop: rk4Step -> accumulateJet -> disk-hit test -> termination
 │              terminal colour (captured/disk/sky) + jetAccum
 │              applyToneMap (exposure + soft-knee + gamma) -> RGBA32F image
+│              benchCounters SSBO (binding 3) <- atomicAdd per ray/step,
+│              only when u_statsEnabled — costs ~+110-150% of frame time
 │    Pass 2  fullscreen.vert + render.frag   sample the image to the screen
+│    dispatchTimed()  GL_TIME_ELAPSED around glDispatchCompute (bench only)
 └─ ImGui overlay
 ```
 
@@ -130,12 +137,14 @@ Build targets (see [adr/0005](./adr/0005-extract-blackhole-core.md)):
    in sync by hand — a physics change must be applied to **both**.
 2. **Header/source separation.** Headers declare types and inline accessors;
    non-trivial bodies live in `.cpp` (`metric.cpp`, `geodesic_integrator.cpp`).
-3. **One shipping render entry point, plus one automation entry point.** The GPU
+3. **One shipping render entry point, plus automation entry points.** The GPU
    path is the only shipping renderer; the CPU integrator exists to validate the
-   geodesic math, not to draw. `--render` is a non-interactive *observation*
-   entry point into the *same* `RayTracer` (hidden window, one dispatch,
-   texture readback) used by regression tests — it adds no second rendering
-   implementation.
+   geodesic math, not to draw. `--render` (one dispatch + texture readback),
+   `--probe` and `--bench` are non-interactive entry points into the *same*
+   `RayTracer` (hidden window) used by regression tests — they add no second
+   rendering implementation. `--bench` times only what `render()` times: its
+   uniforms come from the shared `setComputeUniforms()`, so the bench and the
+   shipping path cannot drift apart.
 4. **Re-render only on change.** `needsRender` gates the expensive compute
    dispatch; unchanged frames reuse the texture via `drawLastFrame()`.
 5. **Run from the repository root.** Shader paths (`shaders/...`) and the config
@@ -198,7 +207,15 @@ Build targets (see [adr/0005](./adr/0005-extract-blackhole-core.md)):
   (`tests/unit/emission_reference_test.cpp`), and added the GPU↔CPU probe
   cross-validation (`tests/gpu/probe_check.py`, `--probe`) plus a full-render
   finite/non-negative/ceiling invariant (`tests/gpu/no_nan_check.py`).
-  **Performance budgets are still unautomated** (tickets 0013+).
+  Ticket 0013 landed the performance layer: `--bench` (a `GL_TIME_ELAPSED`
+  timed loop + a stats pass), `core/bench_stats` (median/p95/mean/min/fps with
+  sample hygiene), the five-case configuration matrix, the committed
+  `bench/baseline.json` with its budgets, and the correctness-normalized gate
+  `bench/gate.py` (±10% band, config/protocol drift, hardware-mismatch skip, skip vs
+  fail) registered as `test_perf_gate`, which CTest gates behind a
+  `correctness` fixture — it runs only while the rest of the suite is green. Measured on the reference GPU: 7.62 ms at 512×512 vs a
+  12 ms budget, jet marginal 1.4% vs 15%. **The last gap in this spec is
+  ticket 0014** (running the suite in CI; locally it is 14/14 green).
 
 ## 7. Directory Layout
 
@@ -211,6 +228,7 @@ solid-bassoon/
 ├── include/{core,rendering,app,logging}/
 ├── src/{core,rendering,app,logging}/ + main.cpp
 ├── tests/                   # CTest suite; links blackhole_core only
+├── bench/                   # performance gate: gate.py, baseline.json, README.md
 ├── lib/                     # vendored imgui / nlohmann / spdlog (gitignored)
 ├── fig/                     # screenshots + acceptance golden images
 └── docs/
