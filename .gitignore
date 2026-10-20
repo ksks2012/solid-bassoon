@@ -23,3 +23,17 @@
 loguru_logger.h
 
 summary/**
+__pycache__/
+*.pyc
+
+# Golden-harness staging — written next to the goldens by
+# tests/gpu/{regression_check,update_reference}.py, cleaned up on normal
+# exit but leaked if a run is interrupted. Never commit these.
+tests/reference/*.f32.regression
+tests/reference/*.f32.regression.meta
+tests/reference/*.f32.delta_on
+tests/reference/*.f32.delta_on.meta
+tests/reference/*.f32.delta_off
+tests/reference/*.f32.delta_off.meta
+tests/reference/*.f32.new
+tests/reference/*.f32.new.meta

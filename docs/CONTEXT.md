@@ -36,7 +36,7 @@ beaming.
 | Logging | `ILogger` interface + spdlog backend, reached through the `GlobalLogger` singleton and `LOG_*` macros |
 | Build | CMake ≥ 3.10, C++17, OpenGL 4.3 Core; GLEW loader; ccache |
 | Third-party | Vendored under `lib/` (imgui, nlohmann/json, spdlog) — see caveats |
-| Tests | CPU unit tests for metric / integrator / config (`tests/`) plus a headless-render determinism check (`tests/gpu/`) run under CTest. The unit layer needs no GL context; the GPU check self-reports `skipped` when no 4.3 compute context exists. Golden regression, the emission kernels and performance are not yet automated (tickets 0008–0010) |
+| Tests | CPU unit tests for metric / integrator / config (`tests/`) plus GPU checks under CTest: a headless-render determinism check and golden regression against five committed float32 references (`tests/reference/`), including a disk on/off locality invariant. The unit layer needs no GL context; GPU checks self-report `skipped` (exit 2) when no 4.3 compute context exists. Emission kernels and performance are not yet fully automated. |
 
 ## 3. Architecture
 
@@ -168,16 +168,20 @@ Build targets (see [adr/0005](./adr/0005-extract-blackhole-core.md)):
   slightly under-scaling beaming near the jet base. The implementation is
   faithful to the spec formula (see
   [adr/0004](./adr/0004-jet-constant-bulk-velocity-beaming.md)).
-- **Testing covers the CPU core plus the headless seam.** A testing &
-  performance standard is defined
+- **Testing covers the CPU core, the headless seam, and golden regression.** A
+  testing & performance standard is defined
   ([standards/testing-and-performance.md](./standards/testing-and-performance.md)),
   with an in-progress harness spec
   ([spec/0002](./spec/0002-testing-and-performance-harness.md)). Tickets 0008
   and 0009 landed the `blackhole_core` split and CPU unit tests; ticket 0010
   landed the headless `--render` + `RayTracer::readback` observation seam and a
-  determinism check. **Golden regression against committed references, the
-  emission kernels and performance budgets are still unautomated** (tickets
-  0011+) — the emission physics is still verified by eye.
+  determinism check; ticket 0011 landed golden regression — five committed
+  float32 references under `tests/reference/`, a comparator self-test, and a
+  disk on/off locality invariant, all registered in CTest
+  (`tests/gpu/regression_check.py`). Rendering is byte-deterministic here
+  (`max_abs = 0`), and `jetoff` is byte-identical to the pre-jet baseline.
+  **Emission kernels and performance budgets are still unautomated**
+  (tickets 0012+) — the emission physics is still verified by eye.
 
 ## 7. Directory Layout
 
