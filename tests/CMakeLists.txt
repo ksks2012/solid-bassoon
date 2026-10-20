@@ -12,6 +12,8 @@ add_core_test(test_smoke      unit/smoke_test.cpp)
 add_core_test(test_metric     unit/metric_test.cpp)
 add_core_test(test_integrator unit/integrator_test.cpp)
 add_core_test(test_config     unit/config_test.cpp)
+add_core_test(test_emission   unit/emission_reference_test.cpp)
+add_core_test(test_probe_reference probe_reference.cpp)
 
 # ── GPU-dependent tests ───────────────────────────────────────────────────────
 # These need a live GL 4.3 compute context. When none exists the renderer exits
@@ -36,6 +38,22 @@ if(PYTHON3_EXECUTABLE)
                 ${CMAKE_CURRENT_SOURCE_DIR}/gpu/test_compare.py)
     set_tests_properties(test_compare PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+    # GPU↔CPU probe cross-validation (ticket 0012, seam S3): the 48 shared
+    # records of core/probe_cases.h are evaluated twice — by the core-only
+    # probe_reference in double precision and by shaders/probe.comp as float32
+    # GPU work items — and compared. Budget justified in probe_check.py
+    # (rtol 1e-5 = ~85 ulp of float32, atol 1e-4 = ~0.6 ulp at the largest
+    # absolute deviation measured).
+    add_test(NAME test_probe_gpu_cpu
+        COMMAND ${PYTHON3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/gpu/probe_check.py
+                --renderer $<TARGET_FILE:${PROJECT_NAME}>
+                --probe-ref $<TARGET_FILE:test_probe_reference>
+                --workdir ${CMAKE_CURRENT_BINARY_DIR}/probe_check)
+    set_tests_properties(test_probe_gpu_cpu PROPERTIES
+        SKIP_RETURN_CODE 2
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
     # Tolerance/threshold justification (standards §3 "Justify every
     # tolerance"): 1e-3 is ~1/4 of one 8-bit code value (1/255 = 3.9e-3), so a
     # passing comparison is already invisible in the quantised viewable form.
@@ -51,9 +69,24 @@ if(PYTHON3_EXECUTABLE)
     set_tests_properties(test_regression_golden PROPERTIES
         SKIP_RETURN_CODE 2
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    # Full-render numeric sanity (ticket 0012, seam S4): the golden answers
+    # "does the frame match the reference?", this answers "is the frame
+    # physically sane?" — finite, non-negative, and inside the ADR-0001
+    # tone-mapped ceiling of 1.0 (slack justified in no_nan_check.py).
+    add_test(NAME test_no_nan
+        COMMAND ${PYTHON3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/gpu/no_nan_check.py
+                --renderer $<TARGET_FILE:${PROJECT_NAME}>
+                --reference-dir ${CMAKE_SOURCE_DIR}/tests/reference
+                --workdir ${CMAKE_CURRENT_BINARY_DIR}/no_nan)
+    set_tests_properties(test_no_nan PROPERTIES
+        SKIP_RETURN_CODE 2
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 else()
     # Not silent: the headless determinism check needs the Python 3 stdlib.
     message(WARNING
-        "python3 not found — the GPU determinism check (test_headless_render) "
-        "will NOT be registered. Install python3 to enable it.")
+        "python3 not found — the GPU checks (test_headless_render, "
+        "test_probe_gpu_cpu, test_no_nan) will NOT be registered. "
+        "Install python3 to enable them.")
 endif()

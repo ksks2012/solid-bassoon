@@ -1,21 +1,70 @@
 #include "rendering/ray_tracer.h"
+#include "core/probe_cases.h"
 #include "logging/logger.h"
 
 #include <fstream>
 #include <sstream>
+#include <string>
 #include <vector>
 
 // ── Shader helpers ────────────────────────────────────────────────────────────
+namespace {
 
-std::string RayTracer::loadShaderSource(const std::string& path) {
+constexpr int kMaxIncludeDepth = 8;
+
+// Directory part of a path ("." when the path is a bare filename).
+std::string parentDir(const std::string& path) {
+    const std::size_t slash = path.find_last_of('/');
+    if (slash == std::string::npos) return ".";
+    if (slash == 0) return "/";
+    return path.substr(0, slash);
+}
+
+// GLSL has no `#include` of its own, so the expansion happens here, before the
+// source reaches glShaderSource().  Directives are resolved relative to the
+// *including* file's directory and are spliced in place, which keeps `#version`
+// the literal first line of the top-level program (a hard GLSL requirement —
+// see shaders/physics.glsl).  Recursion is bounded to reject include cycles.
+std::string expandIncludes(const std::string& path, int depth) {
+    if (depth > kMaxIncludeDepth) {
+        LOG_ERROR("RayTracer", "Shader include depth exceeded at: " + path);
+        return "";
+    }
     std::ifstream file(path);
     if (!file.is_open()) {
         LOG_ERROR("RayTracer", "Cannot open shader file: " + path);
         return "";
     }
-    std::stringstream ss;
-    ss << file.rdbuf();
-    return ss.str();
+
+    const std::string dir = parentDir(path);
+    std::string        line;
+    std::stringstream   out;
+    while (std::getline(file, line)) {
+        const std::size_t first = line.find_first_not_of(" \t");
+        if (first != std::string::npos && line[first] == '#' &&
+            line.compare(first + 1, 7, "include") == 0) {
+            const std::size_t open  = line.find_first_of("\"<", first + 8);
+            const char        close = (open != std::string::npos && line[open] == '"') ? '"' : '>';
+            const std::size_t end   = (open == std::string::npos)
+                                          ? std::string::npos
+                                          : line.find(close, open + 1);
+            if (open == std::string::npos || end == std::string::npos) {
+                LOG_ERROR("RayTracer", "Malformed #include in: " + path);
+                return "";
+            }
+            const std::string name = line.substr(open + 1, end - open - 1);
+            out << expandIncludes(dir + "/" + name, depth + 1) << "\n";
+        } else {
+            out << line << "\n";
+        }
+    }
+    return out.str();
+}
+
+} // namespace
+
+std::string RayTracer::loadShaderSource(const std::string& path) {
+    return expandIncludes(path, 0);
 }
 
 GLuint RayTracer::compileShader(GLenum type, const std::string& source) {
@@ -303,4 +352,72 @@ bool RayTracer::readback(std::vector<float>& out) const {
     glBindTexture(GL_TEXTURE_2D, 0);
 
     return glGetError() == GL_NO_ERROR;
+}
+
+// ── Probe dispatch (spec/0002 seam S2) ────────────────────────────────────────
+
+bool RayTracer::runProbe(const std::vector<float>& input, int numCases,
+                         std::vector<float>& out) {
+    if (numCases <= 0 ||
+        input.size() != static_cast<size_t>(numCases) * probe::kInputStride) {
+        LOG_ERROR("RayTracer", "Probe input size does not match the case count");
+        return false;
+    }
+    out.assign(static_cast<size_t>(numCases) * probe::kOutputStride, 0.0f);
+
+    // Drain any stale errors so we only observe failures from this dispatch.
+    while (glGetError() != GL_NO_ERROR) {}
+
+    const std::string source = loadShaderSource("shaders/probe.comp");
+    if (source.empty()) return false;
+    const GLuint compute = compileShader(GL_COMPUTE_SHADER, source);
+    if (!compute) return false;
+    const GLuint program = linkProgram(compute);
+    if (!program) return false;
+
+    GLuint inBuffer  = 0;
+    GLuint outBuffer = 0;
+    glGenBuffers(1, &inBuffer);
+    glGenBuffers(1, &outBuffer);
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, inBuffer);
+    glBufferData(GL_SHADER_STORAGE_BUFFER,
+                 static_cast<GLsizeiptr>(input.size() * sizeof(float)),
+                 input.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, outBuffer);
+    glBufferData(GL_SHADER_STORAGE_BUFFER,
+                 static_cast<GLsizeiptr>(out.size() * sizeof(float)),
+                 nullptr, GL_DYNAMIC_READ);
+
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, inBuffer);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, outBuffer);
+
+    glUseProgram(program);
+    glUniform1i(glGetUniformLocation(program, "u_numCases"), numCases);
+
+    // probe.comp uses local_size_x = 64.
+    const GLuint groups = (static_cast<GLuint>(numCases) + 63u) / 64u;
+    glDispatchCompute(groups, 1, 1);
+
+    // Retire the SSBO writes before the readback below.
+    glMemoryBarrier(GL_ALL_BARRIER_BITS);
+    glFinish();
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, outBuffer);
+    glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0,
+                       static_cast<GLsizeiptr>(out.size() * sizeof(float)),
+                       out.data());
+
+    const bool ok = (glGetError() == GL_NO_ERROR);
+
+    glUseProgram(0);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    glDeleteBuffers(1, &inBuffer);
+    glDeleteBuffers(1, &outBuffer);
+    glDeleteProgram(program);
+
+    if (!ok) LOG_ERROR("RayTracer", "Probe dispatch failed");
+    return ok;
 }

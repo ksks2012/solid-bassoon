@@ -24,8 +24,12 @@ void printUsage(const char* prog) {
         "  %s                                     Interactive viewer (etc/config.json)\n"
         "  %s --render <config.json> --out <file>\n"
         "        Render one frame headlessly to <file>: raw little-endian\n"
-        "        float32 RGBA plus a <file>.meta shape sidecar.\n",
-        prog, prog);
+        "        float32 RGBA plus a <file>.meta shape sidecar.\n"
+        "  %s --probe <file>\n"
+        "        Run the emission-kernel probe (no frame is rendered) and\n"
+        "        write the results to <file>: raw little-endian float32 plus\n"
+        "        a <file>.meta sidecar.\n",
+        prog, prog, prog);
 }
 }  // namespace
 
@@ -101,8 +105,10 @@ static void cpuValidation(const SchwarzschildMetric& metric, const Config& confi
 int main(int argc, char* argv[]) {
     // ── CLI parsing ───────────────────────────────────────────────────────────
     bool headless = false;
+    bool probe = false;
     std::string configPath;
     std::string outPath;
+    std::string probePath;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -122,6 +128,14 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             outPath = argv[++i];
+        } else if (arg == "--probe") {
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "error: --probe requires a file path\n");
+                printUsage(argv[0]);
+                return 1;
+            }
+            probe = true;
+            probePath = argv[++i];
         } else {
             std::fprintf(stderr, "Unknown argument: %s\n", arg.c_str());
             printUsage(argv[0]);
@@ -140,6 +154,11 @@ int main(int argc, char* argv[]) {
         printUsage(argv[0]);
         return 1;
     }
+    if (headless && probe) {
+        std::fprintf(stderr, "error: --render and --probe are mutually exclusive\n");
+        printUsage(argv[0]);
+        return 1;
+    }
 
     // ── Logger setup ──────────────────────────────────────────────────────────
     auto logger = std::make_shared<SpdlogLogger>();
@@ -148,6 +167,11 @@ int main(int argc, char* argv[]) {
     // ── Headless automation mode ──────────────────────────────────────────────
     if (headless) {
         return runHeadless(configPath, outPath);
+    }
+
+    // ── Emission-kernel probe (no frame rendered) ─────────────────────────────
+    if (probe) {
+        return runProbe(probePath);
     }
 
     // ── Config ────────────────────────────────────────────────────────────────

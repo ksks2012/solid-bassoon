@@ -100,6 +100,16 @@ public:
     // reported an error.
     bool readback(std::vector<float>& out) const;
 
+    // Dispatch `shaders/probe.comp` over an SSBO of fixed-stride input records
+    // and read the results back — the observation seam for the emission
+    // kernels (spec/0002 seam S2). `input` must hold numCases·kInputStride
+    // floats (see include/core/probe_cases.h); `out` receives
+    // numCases·kOutputStride floats. Needs a current GL context but not
+    // init(). Returns false if the program failed to build or a GL error was
+    // reported during the dispatch.
+    bool runProbe(const std::vector<float>& input, int numCases,
+                  std::vector<float>& out);
+
     // Resize the output texture (e.g. on window resize).
     void resize(int width, int height);
 

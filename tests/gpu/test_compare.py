@@ -85,6 +85,39 @@ def main():
         except ValueError:
             check(True, "sidecar shape mismatch raises")
 
+    # ── Relative tolerance (ticket 0012: GPU float32 vs CPU double) ──────────
+    # 1000.0 vs 1000.001: absolute error 1e-3, relative error ~1e-6.
+    big = array.array("f", [1000.0])
+    near = array.array("f", [1000.001])
+    r = compare.compare(big, near, threshold=0.0, rtol=1e-5, tolerance=1e-4)
+    check(r["rel_violations"] == 0, "rtol: 1e-3 abs / 1e-6 rel accepted")
+    check(r["rtol"] == 1e-5, "rtol: reported")
+
+    # The same error must be rejected when no relative budget is granted.
+    r = compare.compare(big, near, threshold=0.0, rtol=0.0, tolerance=1e-4)
+    check(r["rel_violations"] == 1, "rtol: rejected at rtol=0")
+    # A pure absolute budget that already covers it must still accept it.
+    r = compare.compare(big, near, threshold=0.0, rtol=0.0, tolerance=1e-2)
+    check(r["rel_violations"] == 0, "rtol: absolute budget alone still works")
+
+    # 1000.0 vs 1001.0: relative error 1e-3 — far outside a 1e-5 relative
+    # budget, and an absolute 1e-4 must not rescue it either.
+    far = array.array("f", [1001.0])
+    r = compare.compare(big, far, threshold=0.0, rtol=1e-5, tolerance=1e-4)
+    check(r["rel_violations"] == 1, "rtol: 1e-3 relative error rejected")
+
+    # Relative tolerance must not open a hole for non-finite values: two
+    # matching infinities have a limit of inf once rtol > 0, so the budget
+    # test has to reject them explicitly.
+    inf_a = array.array("f", [float("inf")])
+    inf_b = array.array("f", [float("inf")])
+    r = compare.compare(inf_a, inf_b, threshold=0.0, rtol=1e-5, tolerance=1e-4)
+    check(r["rel_violations"] == 1, "rtol: matching infinities rejected")
+
+    # Default is purely absolute — the golden rule of ticket 0011 is unchanged.
+    r = compare.compare(array.array("f", [1.0]), array.array("f", [1.0]))
+    check(r["rtol"] == 0.0, "rtol: default is 0.0")
+
     if FAILURES:
         print("FAIL: {} check(s) failed".format(len(FAILURES)), file=sys.stderr)
         return 1

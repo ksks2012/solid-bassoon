@@ -1,0 +1,73 @@
+#version 430 core
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Probe compute shader (ticket 0012, spec/0002 seam S2)
+//
+// Pushes a table of fixed inputs through the pure kernels in `physics.glsl`
+// and writes the results to an SSBO for CPU readback — no camera, no geodesic
+// integration, no uniforms other than the case count.  This is what makes the
+// emission physics observable without rendering a frame.
+//
+// Records are defined once, in `include/core/probe_cases.h`; that header is
+// the contract for both sides of this shader:
+//
+//   input   16 float32: [0] kernel id, [1..3] pad,
+//                       [4..7] a, [8..11] p, [12..15] q
+//   output   4 float32: [0..2] result xyz, [3] = 0
+//
+// Kernel ids below must match `probe::kDiskEmission … probe::kToneMap`.
+// A mismatch cannot pass silently — the two implementations would run
+// different kernels and disagree by orders of magnitude.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+layout (local_size_x = 64) in;
+
+layout (std430, binding = 1) readonly  buffer ProbeIn  { float probeIn[];  };
+layout (std430, binding = 2) writeonly buffer ProbeOut { vec4  probeOut[]; };
+
+uniform int u_numCases;
+
+// Pure kernels + their parameter structs.  Expanded by loadShaderSource().
+#include "physics.glsl"
+
+const int kDiskEmission  = 0;
+const int kJetDensity    = 1;
+const int kJetBeamFactor = 2;
+const int kToneMap       = 3;
+
+const uint kInputStride = 16u;  // probe::kInputStride
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= uint(u_numCases)) return;
+
+    uint base = id * kInputStride;
+    int kernelId = int(probeIn[base]);
+
+    // Slot a = (r, φ, rs, r_in) / (r, θ, rBound, base_radius) / pos / colour
+    vec4 a = vec4(probeIn[base +  4u], probeIn[base +  5u],
+                  probeIn[base +  6u], probeIn[base +  7u]);
+    // Slot p = (r_out, temp_scale, inclination, —) / (opening, p, max_h, σ)
+    //          / (p_t, p_r, p_θ, p_φ) / (exposure, gamma, —, —)
+    vec4 p = vec4(probeIn[base +  8u], probeIn[base +  9u],
+                  probeIn[base + 10u], probeIn[base + 11u]);
+    // Slot q = (z_falloff, axial_falloff, —, —) / (f, β, α, —)
+    vec4 q = vec4(probeIn[base + 12u], probeIn[base + 13u],
+                  probeIn[base + 14u], probeIn[base + 15u]);
+
+    vec4 result = vec4(0.0);
+
+    if (kernelId == kDiskEmission) {
+        result = vec4(diskEmission(a.x, a.y, a.z, a.w, p.x, p.y, p.z), 0.0);
+    } else if (kernelId == kJetDensity) {
+        JetShape shape = JetShape(a.w, p.x, p.y, p.z, p.w, q.x, q.y);
+        result = vec4(jetDensity(a.x, a.y, a.z, shape), 0.0, 0.0, 0.0);
+    } else if (kernelId == kJetBeamFactor) {
+        JetBeam beam = JetBeam(q.y, q.z);  // (β, α)
+        result = vec4(jetBeamFactor(a, p, q.x, beam), 0.0, 0.0, 0.0);
+    } else if (kernelId == kToneMap) {
+        result = vec4(applyToneMap(a.xyz, p.x, p.y), 0.0);
+    }
+
+    probeOut[id] = result;
+}

@@ -18,4 +18,13 @@ constexpr int kSkip = 2;  // no GL 4.3 + compute context — reported, not passe
 // with a `<out>.meta` sidecar recording its shape.
 int runHeadless(const std::string& configPath, const std::string& outPath);
 
+// ── Emission-kernel probe (ticket 0012, spec/0002 seam S2) ────────────────────
+// Dispatches shaders/probe.comp over the shared probe table
+// (include/core/probe_cases.h) with a hidden window — no frame is rendered —
+// and writes the kernel outputs. Returns headless::{kOk,kFail,kSkip}. The
+// output is numCases·4 little-endian float32 records with a `<out>.meta`
+// sidecar, structurally identical to the CPU reference's output so
+// tests/gpu/probe_check.py can compare the two directly.
+int runProbe(const std::string& outPath);
+
 #endif // HEADLESS_H

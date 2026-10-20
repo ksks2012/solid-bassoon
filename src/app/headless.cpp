@@ -3,6 +3,7 @@
 #include "app/config.h"
 #include "app/render_params.h"
 #include "app/window.h"
+#include "core/probe_cases.h"
 #include "logging/logger.h"
 #include "rendering/ray_tracer.h"
 
@@ -107,5 +108,49 @@ int runHeadless(const std::string& configPath, const std::string& outPath) {
     LOG_INFO("Headless", "Rendered " + std::to_string(width) + "x" +
              std::to_string(height) + " scene to " + outPath);
     std::printf("RENDERED %dx%d -> %s\n", width, height, outPath.c_str());
+    return headless::kOk;
+}
+
+int runProbe(const std::string& outPath) {
+    // ── Hidden window + GL context ────────────────────────────────────────────
+    // Nothing is rendered: the probe only needs somewhere to own a compute
+    // context, so the window stays tiny and invisible.
+    std::unique_ptr<Window> window;
+    try {
+        window = std::make_unique<Window>("Blackhole Renderer (probe)",
+                                          64, 64, /*visible=*/false);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "SKIPPED: no OpenGL context available (%s)\n", e.what());
+        return headless::kSkip;
+    }
+
+    if (!hasComputeContext()) {
+        std::fprintf(stderr,
+                     "SKIPPED: OpenGL 4.3 compute shaders unavailable on '%s'\n",
+                     reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
+        return headless::kSkip;
+    }
+
+    // ── Dispatch the shared probe table ───────────────────────────────────────
+    RayTracer rayTracer;
+    std::vector<float> results;
+    if (!rayTracer.runProbe(probe::packInputs(),
+                            static_cast<int>(probe::kCases.size()), results)) {
+        LOG_ERROR("Probe", "Probe dispatch failed");
+        return headless::kFail;
+    }
+
+    // ── Write the observation ─────────────────────────────────────────────────
+    // Same writer as the CPU reference (probe::writeProbeFile), so the two
+    // files cannot drift apart structurally.
+    if (!probe::writeProbeFile(outPath, results,
+                               static_cast<int>(probe::kCases.size()), "gpu")) {
+        LOG_ERROR("Probe", "Failed to write output: " + outPath);
+        return headless::kFail;
+    }
+
+    LOG_INFO("Probe", "Probed " + std::to_string(probe::kCases.size()) +
+                          " cases to " + outPath);
+    std::printf("PROBED %zu cases -> %s\n", probe::kCases.size(), outPath.c_str());
     return headless::kOk;
 }

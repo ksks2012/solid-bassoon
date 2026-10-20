@@ -32,27 +32,30 @@ beaming.
 | Relativistic jet | Opt-in (off by default). Bipolar, axisymmetric, **emission-only** (optically thin, additive) solid cone with a transverse Gaussian profile, bounded axial power-law and soft top fade. Doppler beaming from a single constant bulk velocity `β` (`δ^(3+α)`). All parameters live in `config.json` + ImGui |
 | UI | ImGui control panel mutates runtime params and triggers a re-render; changes are **not** written back to `config.json` |
 | Config | `etc/config.json` loaded once at startup; missing keys fall back to struct defaults |
-| Automation | `--render <config.json> --out <file>` renders one frame with a **hidden** window, reads back the post-tone-map `RGBA32F` texture (`RayTracer::readback` → `glGetTexImage`), and writes raw little-endian `float32` + a `<file>.meta` shape sidecar — the observation seam for GPU regression. No GL 4.3 compute → exit 2 (`skipped`), never a false pass |
+| Automation | `--render <config.json> --out <file>` renders one frame with a **hidden** window, reads back the post-tone-map `RGBA32F` texture (`RayTracer::readback` → `glGetTexImage`), and writes raw little-endian `float32` + a `<file>.meta` shape sidecar — the observation seam for GPU regression. `--probe <file>` dispatches `shaders/probe.comp` over a fixed input table and writes the kernel outputs the same way. No GL 4.3 compute → exit 2 (`skipped`), never a false pass |
 | Logging | `ILogger` interface + spdlog backend, reached through the `GlobalLogger` singleton and `LOG_*` macros |
 | Build | CMake ≥ 3.10, C++17, OpenGL 4.3 Core; GLEW loader; ccache |
 | Third-party | Vendored under `lib/` (imgui, nlohmann/json, spdlog) — see caveats |
-| Tests | CPU unit tests for metric / integrator / config (`tests/`) plus GPU checks under CTest: a headless-render determinism check and golden regression against five committed float32 references (`tests/reference/`), including a disk on/off locality invariant. The unit layer needs no GL context; GPU checks self-report `skipped` (exit 2) when no 4.3 compute context exists. Emission kernels and performance are not yet fully automated. |
+| Tests | CPU unit tests for metric / integrator / config / **emission reference** (`tests/`) plus GPU checks under CTest: a headless-render determinism check, golden regression against five committed float32 references (`tests/reference/`, including a disk on/off locality invariant), a **GPU↔CPU probe cross-validation** of all four emission kernels, and a full-render finite/non-negative/tone-map-ceiling invariant — 11 tests. The unit layer needs no GL context; GPU checks self-report `skipped` (exit 2) when no 4.3 compute context exists. Performance budgets are not yet automated |
 
 ## 3. Architecture
 
 ```
 main.cpp
 ├─ CLI               no args → interactive; `--render <cfg> --out <file>` → headless
+│                     `--probe <file>` → hidden 64x64 context, one kernel-probe dispatch
 ├─ Config            etc/config.json  -> struct params
 ├─ buildRayTracerParams(config)  config -> RayTracerParams (shared by both paths)
 ├─ Window            GLFW OpenGL 4.3 Core context + GLEW init (visible or hidden)
 ├─ cpuValidation()   CPU GeodesicIntegrator — startup sanity trace only (interactive)
 ├─ [headless]        hidden window → one compute dispatch → RayTracer::readback → file
+├─ [probe]           hidden window → RayTracer::runProbe → probe.comp SSBO → file
 ├─ RayTracer         (interactive path)
 │    Pass 1  raytrace.comp   compute, 16x16 groups, one thread per pixel
+│              #include "physics.glsl"  pure kernels, parameters passed in
 │              loop: rk4Step -> accumulateJet -> disk-hit test -> termination
 │              terminal colour (captured/disk/sky) + jetAccum
-│              tone map (exposure + soft-knee + gamma) -> writes RGBA32F image
+│              applyToneMap (exposure + soft-knee + gamma) -> RGBA32F image
 │    Pass 2  fullscreen.vert + render.frag   sample the image to the screen
 └─ ImGui overlay
 ```
@@ -68,16 +71,19 @@ Layers:
   single runtime parameter block passed to the GPU (black hole, camera,
   integration, disk, point source, **jet**, display). `accretion_disk.h`
   documents the disk model and holds its default constants; the jet parameter
-  block is `JetParams`.
+  block is `JetParams`. `loadShaderSource` expands `#include "..."` textually
+  (depth-limited) so `raytrace.comp` can pull in `physics.glsl`; `runProbe`
+  dispatches `probe.comp` over an input SSBO and reads the output SSBO back.
 - **app** — `Config` (`config.h/.cpp`) parses JSON; `Window`
   (`window.h/.cpp`) wraps GLFW/GLEW and logs GL/compute limits (visible by
   default, `visible=false` for headless); `render_params.*` holds the shared
-  config→`RayTracerParams` translation; `headless.*` implements the
-  `--render` entry point and raw-float output.
+  config→`RayTracerParams` translation; `headless.*` implements the `--render`
+  and `--probe` entry points and raw-float output.
 - **logging** — `logger.h` defines `ILogger`/`GlobalLogger`; `spdlog_logger.*`
   is the backend.
-- **shaders** — `raytrace.comp` (all shipping physics), `fullscreen.vert`,
-  `render.frag`.
+- **shaders** — `raytrace.comp` (the shipping render), `physics.glsl` (pure
+  emission kernels + `PI`, no uniforms), `probe.comp` (kernel probe),
+  `fullscreen.vert`, `render.frag`.
 
 Build targets (see [adr/0005](./adr/0005-extract-blackhole-core.md)):
 
@@ -138,10 +144,17 @@ Build targets (see [adr/0005](./adr/0005-extract-blackhole-core.md)):
    interpolation between neighbouring ray results.
 7. `config.json` is startup-only; all live tuning happens through
    `RayTracerParams` and the ImGui panel.
-8. **Emission physics is GLSL-only.** The disk Doppler model and the jet
-   density/beaming kernel live only in `raytrace.comp` — they are *not* part of
-   the mirrored metric implementation (§5.1), which is scoped to the geodesic
-   RHS, adaptive step and camera tetrad.
+8. **Emission physics is pure and mirrored, but separate from the geodesic
+   mirror.** The disk, jet-density, jet-beaming and tone-map kernels live in
+   `shaders/physics.glsl` as pure functions that read no uniforms — parameters
+   are passed at the call site. They are *not* part of the mirrored metric
+   implementation (§5.1), which is scoped to the geodesic RHS, adaptive step
+   and camera tetrad. Their second mirror is the double-precision C++
+   reimplementation in `core/emission_reference.{h,cpp}`, and the two are kept
+   in sync by construction and by measurement: hand-derived literals in
+   `tests/unit/emission_reference_test.cpp`, and the 48 shared probe records
+   (`core/probe_cases.h`) compared GPU-vs-CPU by `tests/gpu/probe_check.py`.
+   A change to one mirror without the other fails the suite.
 
 ## 6. Known Gaps & Caveats
 
@@ -168,8 +181,8 @@ Build targets (see [adr/0005](./adr/0005-extract-blackhole-core.md)):
   slightly under-scaling beaming near the jet base. The implementation is
   faithful to the spec formula (see
   [adr/0004](./adr/0004-jet-constant-bulk-velocity-beaming.md)).
-- **Testing covers the CPU core, the headless seam, and golden regression.** A
-  testing & performance standard is defined
+- **Testing covers the CPU core, the headless seam, golden regression, and the
+  emission kernels.** A testing & performance standard is defined
   ([standards/testing-and-performance.md](./standards/testing-and-performance.md)),
   with an in-progress harness spec
   ([spec/0002](./spec/0002-testing-and-performance-harness.md)). Tickets 0008
@@ -180,8 +193,12 @@ Build targets (see [adr/0005](./adr/0005-extract-blackhole-core.md)):
   disk on/off locality invariant, all registered in CTest
   (`tests/gpu/regression_check.py`). Rendering is byte-deterministic here
   (`max_abs = 0`), and `jetoff` is byte-identical to the pre-jet baseline.
-  **Emission kernels and performance budgets are still unautomated**
-  (tickets 0012+) — the emission physics is still verified by eye.
+  Ticket 0012 extracted the emission kernels into `shaders/physics.glsl`,
+  pinned them with hand-derived literal tests
+  (`tests/unit/emission_reference_test.cpp`), and added the GPU↔CPU probe
+  cross-validation (`tests/gpu/probe_check.py`, `--probe`) plus a full-render
+  finite/non-negative/ceiling invariant (`tests/gpu/no_nan_check.py`).
+  **Performance budgets are still unautomated** (tickets 0013+).
 
 ## 7. Directory Layout
 
@@ -190,7 +207,7 @@ solid-bassoon/
 ├── CMakeLists.txt
 ├── .context/                # active session state (gitignored)
 ├── etc/config.json          # startup configuration
-├── shaders/                 # raytrace.comp, fullscreen.vert, render.frag
+├── shaders/                 # raytrace.comp, physics.glsl, probe.comp, fullscreen.vert, render.frag
 ├── include/{core,rendering,app,logging}/
 ├── src/{core,rendering,app,logging}/ + main.cpp
 ├── tests/                   # CTest suite; links blackhole_core only
