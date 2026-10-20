@@ -1,0 +1,17 @@
+scene=nearaxis
+width=512
+height=512
+channels=4
+dtype=float32
+layout=RGBA
+byte_order=little
+origin=bottom-left
+layer=3-golden-regression
+seam=RayTracer::readback (glGetTexImage, RGBA32F)
+tolerance=0.001
+view_gamma=2.2  # PPM only, never compared
+source=BlackholeRenderer --render tests/reference/scenes/nearaxis.json
+code_hash=577173e2741fa8a91c91b635c2874219fa4d64fb3dd83efdf1ef3440ad5e3f89
+gl_renderer=D3D12 (NVIDIA GeForce RTX 4070)
+reason=record gl_renderer in sidecar so a driver mismatch skips honestly (spec 0002 Further Notes)
+updated=2026-10-20

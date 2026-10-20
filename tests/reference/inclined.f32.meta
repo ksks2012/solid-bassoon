@@ -1,0 +1,17 @@
+scene=inclined
+width=512
+height=512
+channels=4
+dtype=float32
+layout=RGBA
+byte_order=little
+origin=bottom-left
+layer=3-golden-regression
+seam=RayTracer::readback (glGetTexImage, RGBA32F)
+tolerance=0.001
+view_gamma=2.2  # PPM only, never compared
+source=BlackholeRenderer --render tests/reference/scenes/inclined.json
+code_hash=66feb44296a791453b0c4f6043e35b823a49f91373cd55ec6b6968a29273e94a
+gl_renderer=D3D12 (NVIDIA GeForce RTX 4070)
+reason=record gl_renderer in sidecar so a driver mismatch skips honestly (spec 0002 Further Notes)
+updated=2026-10-20

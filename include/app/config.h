@@ -33,6 +33,7 @@ struct DiskParams {
     double inner_radius = 6.0;   // ISCO = 3·rs for Schwarzschild (rs = 2)
     double outer_radius = 12.0;
     double temperature  = 1.0;   // normalised
+    bool   enabled      = true;  // on by default; headless regressions toggle it
 };
 
 // Ray-tracing render settings

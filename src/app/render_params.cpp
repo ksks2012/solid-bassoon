@@ -23,7 +23,7 @@ RayTracerParams buildRayTracerParams(const Config& config) {
     params.disk_inner   = static_cast<float>(config.disk.inner_radius);
     params.disk_outer   = static_cast<float>(config.disk.outer_radius);
     params.disk_temp    = static_cast<float>(config.disk.temperature);
-    params.disk_enabled = 1;
+    params.disk_enabled = config.disk.enabled ? 1 : 0;
 
     // Relativistic jet (off by default)
     params.jet.enabled          = config.jet.enabled ? 1 : 0;

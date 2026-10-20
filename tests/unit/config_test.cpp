@@ -47,6 +47,7 @@ int main() {
         CHECK(cfg.disk.inner_radius == 6.0);
         CHECK(cfg.disk.outer_radius == 12.0);
         CHECK(cfg.disk.temperature == 1.0);
+        CHECK(cfg.disk.enabled == true);
 
         CHECK(cfg.render.width == 1280);
         CHECK(cfg.render.height == 720);
@@ -76,7 +77,7 @@ int main() {
         writeFile(kTmpPath, R"({
             "blackhole":        {"mass": 2.5, "spin": 0.7, "rs": 5.0},
             "camera":           {"distance": 40.0, "inclination": 45.0, "azimuth": 10.0, "fov": 30.0},
-            "accretion_disk":   {"inner_radius": 5.0, "outer_radius": 20.0, "temperature": 1.5},
+            "accretion_disk":   {"inner_radius": 5.0, "outer_radius": 20.0, "temperature": 1.5, "enabled": false},
             "rendering":        {"width": 640, "height": 480, "max_steps": 2000, "step_size": 0.02,
                                  "abort_distance": 200.0, "exposure": 2.0, "gamma": 2.2},
             "relativistic_jet": {"enabled": true, "base_radius": 4.0, "opening_angle": 5.0,
@@ -101,6 +102,7 @@ int main() {
         CHECK(cfg.disk.inner_radius == 5.0);
         CHECK(cfg.disk.outer_radius == 20.0);
         CHECK(cfg.disk.temperature == 1.5);
+        CHECK(cfg.disk.enabled == false);
 
         CHECK(cfg.render.width == 640);
         CHECK(cfg.render.height == 480);
@@ -144,6 +146,7 @@ int main() {
         CHECK(cfg.blackhole.mass == 1.0);   // untouched default
         CHECK(cfg.render.width == 800);     // known key still applied
         CHECK(cfg.render.height == 720);    // untouched default
+        CHECK(cfg.disk.enabled == true);    // untouched default (disk on)
     }
 
     // ── Missing file raises ConfigError ──────────────────────────────────────

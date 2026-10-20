@@ -29,6 +29,28 @@ if(PYTHON3_EXECUTABLE)
     set_tests_properties(test_headless_render PROPERTIES
         SKIP_RETURN_CODE 2
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    # Comparator self-verification (spec 0002 §"Testing"): no GPU needed.
+    add_test(NAME test_compare
+        COMMAND ${PYTHON3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/gpu/test_compare.py)
+    set_tests_properties(test_compare PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    # Tolerance/threshold justification (standards §3 "Justify every
+    # tolerance"): 1e-3 is ~1/4 of one 8-bit code value (1/255 = 3.9e-3), so a
+    # passing comparison is already invisible in the quantised viewable form.
+    # The jetoff scene bypasses this with 0.0 — byte identity with the pre-jet
+    # baseline is a contract, not a tolerance (see tests/reference/README.md).
+    add_test(NAME test_regression_golden
+        COMMAND ${PYTHON3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/gpu/regression_check.py
+                --renderer $<TARGET_FILE:${PROJECT_NAME}>
+                --reference-dir ${CMAKE_SOURCE_DIR}/tests/reference
+                --tolerance 1e-3
+                --threshold 1e-3)
+    set_tests_properties(test_regression_golden PROPERTIES
+        SKIP_RETURN_CODE 2
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 else()
     # Not silent: the headless determinism check needs the Python 3 stdlib.
     message(WARNING

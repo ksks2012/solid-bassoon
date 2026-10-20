@@ -43,6 +43,7 @@ void Config::parseConfig(const json& j) {
         if (d.contains("inner_radius")) disk.inner_radius = d["inner_radius"].get<double>();
         if (d.contains("outer_radius")) disk.outer_radius = d["outer_radius"].get<double>();
         if (d.contains("temperature"))  disk.temperature  = d["temperature"].get<double>();
+        if (d.contains("enabled"))      disk.enabled      = d["enabled"].get<bool>();
     }
 
     // Rendering

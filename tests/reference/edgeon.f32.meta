@@ -1,0 +1,17 @@
+scene=edgeon
+width=512
+height=512
+channels=4
+dtype=float32
+layout=RGBA
+byte_order=little
+origin=bottom-left
+layer=3-golden-regression
+seam=RayTracer::readback (glGetTexImage, RGBA32F)
+tolerance=0.001
+view_gamma=2.2  # PPM only, never compared
+source=BlackholeRenderer --render tests/reference/scenes/edgeon.json
+code_hash=005b09017e1586b1c66a29a4a2dc76ee04b802391b71505e8666ea38cad28531
+gl_renderer=D3D12 (NVIDIA GeForce RTX 4070)
+reason=record gl_renderer in sidecar so a driver mismatch skips honestly (spec 0002 Further Notes)
+updated=2026-10-20
